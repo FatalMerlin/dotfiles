@@ -1,0 +1,16 @@
+[include]
+    path = ~/.gitconfig.common
+[core]
+{{- if eq .chezmoi.os "windows" }}
+    sshCommand = "C:/Windows/System32/OpenSSH/ssh.exe"
+    autocrlf = true
+{{- else }}
+    autocrlf = input
+{{- end }}
+{{- if eq .chezmoi.os "windows" }}
+[gpg "ssh"]
+    program = "op-ssh-sign.exe"
+{{- end }}
+{{- /* Linux/macOS: intentionally NO gpg.ssh.program. git falls back to its built-in
+       `ssh-keygen -Y sign` using the per-identity user.signingkey, served by the
+       1Password SSH agent — this is how Linux commit-signing actually works here. */}}

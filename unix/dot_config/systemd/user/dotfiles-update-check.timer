@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic package update check.
+
+[Timer]
+OnBootSec=0m
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=default.target

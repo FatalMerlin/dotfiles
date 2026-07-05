@@ -1,0 +1,6 @@
+{{- /* Allow-list for git SSH signature verification (gpg.ssh.allowedSignersFile).
+       One line per identity: <email> <public-key>. Generated from .identities;
+       real values live only in the private channel. */ -}}
+{{ range $key, $id := .identities -}}
+{{ $id.email }} {{ trimPrefix "key::" $id.signingKey }}
+{{ end -}}

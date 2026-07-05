@@ -1,0 +1,4 @@
+#!/usr/bin/env zsh
+
+# source $HOME/.aliases.zsh
+source $HOME/.zshrc

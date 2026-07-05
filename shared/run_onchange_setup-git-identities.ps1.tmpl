@@ -1,0 +1,11 @@
+# run_onchange: re-runs when the rendered identity set changes.
+$dir = Join-Path $HOME ".gitconfig.d"
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+{{ range $key, $id := .identities -}}
+@"
+[user]
+    name = {{ $id.name }}
+    email = {{ $id.email }}
+    signingkey = {{ $id.signingKey }}
+"@ | Set-Content -NoNewline (Join-Path $dir "{{ $key }}")
+{{ end -}}

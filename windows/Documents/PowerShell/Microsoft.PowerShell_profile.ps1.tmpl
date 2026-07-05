@@ -1,0 +1,471 @@
+Write-Host "Reminder: Check out `chezmoi` https://www.chezmoi.io/"
+
+# oh-my-posh init pwsh --config "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/powerlevel10k_rainbow.omp.json" | Invoke-Expression
+oh-my-posh init pwsh --config "~/.mytheme.omp.json" | Invoke-Expression
+
+# for `refreshenv` support
+$ChocoProfilePsmPath = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+if ([System.IO.File]::Exists($ChocoProfilePsmPath)) {
+    Import-Module $ChocoProfilePsmPath
+}
+
+$env:VIRTUAL_ENV_DISABLE_PROMPT = 1
+$env:PIPENV_VENV_IN_PROJECT = 1
+
+$env:UV_CACHE_DIR = "D:/.cache/uv"
+
+#region PowerShell Dependency Management
+# Ensure PSGallery is registered as a trusted repository
+# And force re-registration to avoid issues with existing registration
+# This also ensures the latest repository metadata is used
+Register-PSResourceRepository -PSGallery -Trusted -Force
+
+function EnsureExperimentalFeature {
+    param (
+        [string] $FeatureName
+    )
+    $feature = Get-ExperimentalFeature -Name $FeatureName
+    if (-not ($feature.Enabled)) {
+        Write-Host "Enabling experimental PowerShell feature: $FeatureName"
+        Enable-ExperimentalFeature -Name $FeatureName
+    }
+}
+
+function EnsurePSResource {
+    param (
+        [string] $Name
+    )
+    # If Stdout is redirected, the condition always returns $true, so use -ErrorAction to suppress errors
+    if (-not (Get-PSResource -Name $Name -ErrorAction SilentlyContinue)) {
+        Install-PSResource -Name $Name -Scope CurrentUser
+    }
+    Import-Module $Name
+}
+#endregion
+
+# chezmoi is the apply-engine only; the repo holds three sources (shared/unix/windows).
+$DOTFILES_SRC = "$HOME\.local\share\chezmoi"
+function dfa { chezmoi apply -S "$DOTFILES_SRC\shared"; chezmoi apply -S "$DOTFILES_SRC\windows" }   # dotfiles apply
+function dfu { git -C "$DOTFILES_SRC" pull --ff-only; dfa }                                          # dotfiles update
+
+#region Autocompletes
+op completion powershell | Out-String | Invoke-Expression
+
+# winget autocomplete
+# See: https://learn.microsoft.com/en-us/windows/package-manager/winget/tab-completion
+# Reconstructs from CommandElements (not ToString) so alias-injected CommandAst nodes work correctly,
+# and appends a trailing space when no word is being typed so winget knows to complete the next argument.
+$__wingetCompleterBlock = {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    [Console]::InputEncoding = [Console]::OutputEncoding = $OutputEncoding = [System.Text.Utf8Encoding]::new()
+    $Local:word = $wordToComplete.Replace('"', '""')
+    $Local:parts = $commandAst.CommandElements | ForEach-Object { $_.ToString() }
+    $Local:cmdStr = ($Local:parts -join ' ') + $(if (-not $wordToComplete) { ' ' } else { '' })
+    winget complete --word="$Local:word" --commandline "$($Local:cmdStr.Replace('"', '""'))" --position $Local:cmdStr.Length | ForEach-Object {
+        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    }
+}
+Register-ArgumentCompleter -Native -CommandName winget -ScriptBlock $__wingetCompleterBlock
+#endregion
+
+# Creates a named function that calls $Command with fixed $AliasArgs prepended, and wires tab
+# completion by injecting those alias args into the base command's completer block AST.
+# The base completer is discovered by convention: __${Command}CompleterBlock.
+function New-CommandAlias {
+    param(
+        [string]   $Name,
+        [string]   $Command,
+        [string[]] $AliasArgs = @()
+    )
+    Remove-Item "alias:$Name" -Force -ErrorAction SilentlyContinue
+    Set-Item -Path "function:global:$Name" -Value { & $Command @AliasArgs @args }.GetNewClosure()
+
+    $baseCompleter = Get-Variable "__${Command}CompleterBlock" -ValueOnly -ErrorAction SilentlyContinue
+    if (-not $baseCompleter) { return }
+
+    Register-ArgumentCompleter -CommandName $Name -ScriptBlock {
+        param($wordToComplete, $commandAst, $cursorPosition)
+        $userArgs = $commandAst.CommandElements | Select-Object -Skip 1 | ForEach-Object { $_.ToString() }
+        $newCmd = (@($Command) + @($AliasArgs) + @($userArgs)) -join ' '
+        $scriptAst = [System.Management.Automation.Language.Parser]::ParseInput($newCmd, [ref]$null, [ref]$null)
+        $newCmdAst = $scriptAst.EndBlock.Statements[0].PipelineElements[0]
+        & $baseCompleter $wordToComplete $newCmdAst $newCmd.Length
+    }.GetNewClosure()
+}
+
+# Ctrl+d to delete char or exit, Ctrl+a to go to beginning of line, Ctrl+e to go to end of line, etc.
+# Mirrors the default behavior of many Unix shells
+Set-PSReadLineOption -EditMode Emacs
+
+# (c)ode (c)onfig
+function cc { code $PROFILE }
+
+# (s)ource (c)onfig
+# PowerShell cannot source the $PROFILE file from a function...
+# So we have to make it complicated...
+# Source: https://stackoverflow.com/a/75528658/4161937
+function sc { 
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.SendKeys]::SendWait(". `$PROFILE; clear{ENTER}")
+}
+
+# (f)ind (al)iases
+function fal { 
+    $query = "$args"
+    Get-Alias | Where-Object { $_.Definition -like "*$query*" -or $_.Name -like "*$query*" }
+}
+
+if (Get-Command "sccache" -ErrorAction SilentlyContinue) {
+    $env:RUSTC_WRAPPER = "sccache"
+}
+
+function rcon {
+    & $RconExe --config $RconConfig $args
+}
+
+function activate {
+    $venvPath = "./.venv/Scripts/Activate.ps1"
+    if (-not (Test-Path ./.venv/Scripts/Activate.ps1)) {
+        Write-Warning "No .venv folder found in current directory."
+        return;
+    }
+    & $venvPath
+}
+
+# function pip_upgrade {
+#     $id = 0
+#     $activity = "Upgrading pip packages"
+#     $counter = 0;
+
+#     $packages = $(python -m pip freeze)
+#     Write-Progress -Id $id -Activity $activity -PercentComplete 0
+#     $packages | ForEach-Object {
+#         $name, $version = $_.split('==')
+#         [int] $progress = (++$counter) * 100 / $packages.Length
+#         Write-Progress -Id $id -Activity "[$progress %] $activity" -PercentComplete $progress -Status "$name [$version]"
+#         python -m pip install --upgrade $name > Out-Null
+#     }
+#     Write-Progress -Id 0 -Activity "Upgrading pip packages" -Completed
+# }
+
+function pip_upgrade {
+    $tmpRequirements = New-TemporaryFile
+    try {
+        python -m pip freeze | ForEach-Object { $_.Replace("==", ">=") } | Out-File $tmpRequirements
+        Get-Content $tmpRequirements
+        python -m pip install -r $tmpRequirements --upgrade
+    }
+    finally {
+        Remove-Item -Force $tmpRequirements
+    }
+}
+
+function flush_dns {
+    ipconfig /release
+    ipconfig /flushdns
+    ipconfig /renew
+}
+
+New-CommandAlias -Name wgs   -Command winget -AliasArgs search, -s, winget
+New-CommandAlias -Name wgi   -Command winget -AliasArgs install, -s, winget, -e, --id
+
+# Interactive search-and-install: fuzzy-pick from Find-WinGetPackage results, then install the selection.
+# Uses Select-Object Id, Name only — accessing Version or AvailableVersions triggers a per-package
+# catalog lookup and makes the whole call slow. Same applies to Get-WinGetPackage (inherently ~3.7s),
+# so both queries run in parallel via Start-ThreadJob: total wait ≈ max(3.7s, 1.5s) vs 5.2s sequential.
+function wgsi {
+    param([string] $query)
+
+    if (-not (Get-Command fzf -ErrorAction SilentlyContinue)) {
+        Write-Error "fzf is not installed. Run: wgi junegunn.fzf"
+        return
+    }
+
+    $installedJob = Start-ThreadJob { Get-WinGetPackage | Select-Object -ExpandProperty Id }
+    $searchJob = Start-ThreadJob {
+        Find-WinGetPackage -Source winget -Query $using:query -MatchOption ContainsCaseInsensitive |
+        Select-Object Id, Name
+    }
+
+    Write-Progress -Id 0 -Activity 'wgsi' -Status 'Searching...' -PercentComplete -1
+    $null = Wait-Job $installedJob, $searchJob
+    Write-Progress -Id 0 -Activity 'wgsi' -Completed
+
+    $installedIds = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]] (Receive-Job $installedJob -ErrorAction Stop),
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
+    $results = Receive-Job $searchJob -ErrorAction Stop |
+    Where-Object { -not $installedIds.Contains($_.Id) }
+    Remove-Job $installedJob, $searchJob
+
+    if (-not $results) { Write-Warning "No results for '$query' (or all matches already installed)."; return }
+
+    # Prepend Id as a hidden field (before \t) so fzf displays "Name  (Id)" but we recover the exact Id.
+    $fzfInput = $results | ForEach-Object { "$($_.Id)`t$($_.Name)  ($($_.Id))" }
+    $selected = $fzfInput | fzf --delimiter "`t" --with-nth 2 --layout reverse
+    if (-not $selected) { return }
+
+    $pkgId = ($selected -split "`t", 2)[0]
+    Write-Host "Installing: $pkgId" -ForegroundColor Cyan
+    wgi $pkgId
+}
+New-CommandAlias -Name wgu   -Command winget -AliasArgs upgrade, -s, winget, -e, --id
+New-CommandAlias -Name wgr   -Command winget -AliasArgs remove, -s, winget, -e, --id
+New-CommandAlias -Name wgl   -Command winget -AliasArgs list, -s, winget
+New-CommandAlias -Name wglup -Command winget -AliasArgs list, --upgradable, -s, winget
+
+function wgreinstall {
+    winget remove -s winget -e --id @args
+    winget install -s winget -e --id @args
+}
+
+function wgua {
+    sudo winget upgrade --all --include-unknown @args
+}
+
+function wguas {
+    sudo winget upgrade --all --include-unknown --silent @args
+}
+
+function wglu {
+    # `-Source winget` does not work
+    Get-WinGetPackage | Where-Object { $_.Source -eq "winget" -and $_.InstalledVersion -eq "Unknown" }
+}
+
+
+# https://devblogs.microsoft.com/commandline/winget-commandnotfound/
+if ($PSVersionTable.PSVersion -lt [Version]"7.6") {
+    EnsureExperimentalFeature -FeatureName PSFeedbackProvider
+}
+EnsurePSResource -Name Microsoft.WinGet.Client
+EnsurePSResource -Name Microsoft.WinGet.CommandNotFound
+
+#region Dependency management — mirrors linux/dependencies/
+# The dependencies/ directory is symlinked into $HOME by install.ps1.
+$DependenciesDir = "$HOME/dependencies"
+if (Test-Path $DependenciesDir) {
+    . "$DependenciesDir/_functions.ps1"
+    . "$DependenciesDir/winget.ps1"
+    . "$DependenciesDir/cargo.ps1"
+    . "$DependenciesDir/npm.ps1"
+    . "$DependenciesDir/custom.ps1"
+    reportMissing
+}
+#endregion
+
+function grep {
+    param (
+        [string] $pattern,
+        [CmdletBinding()]
+        $inputObject
+    )
+    Select-String -pattern $pattern -InputObject $input
+}
+
+function mp4towebm {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]
+        $InputPath,
+
+        [Parameter()]
+        [System.IO.FileInfo]
+        $OutputPath,
+
+        # See: https://superuser.com/a/677580/685008
+        [Parameter()]
+        [ValidateRange(4, 63)]
+        [byte]
+        $Crf = 30,
+
+        [Parameter()]
+        [switch]
+        $RemoveAudio = $false
+    )
+
+    if (-not $OutputPath) {
+        [System.IO.FileInfo] $OutputPath = Join-Path $InputPath.Directory "$($InputPath.BaseName).webm"
+    }
+
+    if ($RemoveAudio) {
+        $AudioFlag = "-an"
+    }
+    else {
+        $AudioFlag = "-b:a 128k -c:a libopus".Split(" ")
+    }
+
+    # See: https://stackoverflow.com/a/47512301/4161937
+    & ffmpeg -y -i "$InputPath" -c:v libvpx-vp9 -deadline realtime -crf $Crf -b:v 0 $AudioFlag "$OutputPath"
+}
+
+function rmrf {
+    Remove-Item -Recurse -Force $args
+}
+
+function tl {
+    & "C:\Program Files\ThinLinc client\tlclient.exe" --user {{ .windows.thinlinc.user }} --password $(op item get {{ .windows.onepassword.vpnItem }} --account "{{ .windows.onepassword.account }}" --fields password --reveal) {{ .windows.thinlinc.host }} 
+}
+
+# Zoxide Setup - https://github.com/ajeetdsouza/zoxide?tab=readme-ov-file#installation
+# Add this to the end of your config file (find it by running echo $profile in PowerShell):
+Invoke-Expression (& { (zoxide init powershell | Out-String) })
+Remove-Alias cd
+Set-Alias cd z
+
+Invoke-Expression -Command $(gh completion -s powershell | Out-String)
+
+function mkcd {
+    param (
+        [string] $path
+    )
+    New-Item -ItemType Directory $path
+    Set-Location $path
+}
+
+$IsNetShTcpGlobalReceiveWindowAutoTuningLevelNormal = (netsh interface tcp show global | select-string "Receive Window Auto-Tuning Level").Line.Trim().EndsWith("normal")
+if (!$IsNetShTcpGlobalReceiveWindowAutoTuningLevelNormal) {
+    Write-Host -ForegroundColor Blue "(sudo) Enabling Receive Window Auto-Tuning Level Normal"
+    sudo netsh interface tcp set global autotuninglevel=normal
+}
+
+function Add-EnvPath {
+    param (
+        [string] $newPath
+    )
+    if (($env:Path.Split(";") -contains $newPath)) {
+        Write-Host "Path '$newPath' already exists in PATH."
+        return
+    }
+    Write-Host "Adding '$newPath' to PATH."
+    $currentPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::User)
+    [System.Environment]::SetEnvironmentVariable("Path", "$currentPath;$newPath", [System.EnvironmentVariableTarget]::User)
+
+    Update-SessionEnvironment # chocolatey function to update current session environment (function aliased by `refreshenv`)
+}
+
+function Get-EnvPath {
+    [OutputType([string])]
+    param(
+        [System.EnvironmentVariableTarget] $scope = [System.EnvironmentVariableTarget]::User
+    )
+    [System.Environment]::GetEnvironmentVariable("Path", $scope).Split(";") | Where-Object { $_ -ne "" }
+}
+
+function CleanEnvPath {
+    param(
+        [System.EnvironmentVariableTarget] $scope = [System.EnvironmentVariableTarget]::User
+    )
+
+    Write-Output "Cleaning PATH variable in scope: $scope ..."
+
+    $originalPaths = [System.Environment]::GetEnvironmentVariable("Path", $scope).Split(";") | Where-Object { $_ -ne "" } | Sort-Object
+    $newPaths = $originalPaths # unchanged by default
+    
+    Write-Output "Deduplicating PATH entries..."
+    $uniquePaths = $newPaths | Select-Object -Unique
+    $diff = Compare-Object -ReferenceObject $newPaths -DifferenceObject $uniquePaths
+    $diff | Out-String
+
+    # prompt user to confirm changes, default to Yes
+    if ($null -ne $diff) {
+        $confirmation = Read-Host "Do you want to apply these changes? (Y/n)"
+        if ($confirmation -eq "" -or $confirmation.ToLower() -eq "y") {
+            $newPaths = $uniquePaths
+            [System.Environment]::SetEnvironmentVariable("Path", $newPaths -join ";", $scope)
+        }
+    }
+
+    Write-Output "Checking for non-existent PATH entries..."
+    $validPaths = $newPaths | Where-Object { Test-Path -Path "$_" -PathType Container }
+    $diff = Compare-Object -ReferenceObject $newPaths -DifferenceObject $validPaths
+    $diff | Out-String
+
+    if ($null -ne $diff) {
+        # prompt user to confirm changes, default to Yes
+        $confirmation = Read-Host "Do you want to apply these changes? (Y/n)"
+        if ($confirmation -eq "" -or $confirmation.ToLower() -eq "y") {
+            $newPaths = $validPaths
+            [System.Environment]::SetEnvironmentVariable("Path", $newPaths -join ";", $scope)
+        }
+    }
+
+    Write-Output "Updating session environment..."
+    Update-SessionEnvironment
+    $originalPathLength = ($originalPaths).Length
+    $finalPathLength = ([System.Environment]::GetEnvironmentVariable("Path", $scope).Split(";") | Where-Object { $_ -ne "" }).Length
+    Write-Output "PATH cleaned: $originalPathLength -> $finalPathLength entries."
+    Write-Output "Done"
+}
+
+function Get-ImageDimension {
+    param (
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$ImagePath
+    )
+
+    $ImagePath = (Resolve-Path $ImagePath).Path
+
+    if (-not $ImagePath.Exists) {
+        Write-Error "Image file does not exist: $($ImagePath.FullName)"
+        return
+    }
+
+    $identifyOutput = magick.exe identify -ping -format '%w:%h' "$($ImagePath.FullName)"
+    $dimensions = $identifyOutput -split ":"
+    if ($dimensions.Length -ne 2) {
+        Write-Error "Failed to get image dimensions for $($ImagePath.FullName). Output: $identifyOutput"
+        return
+    }
+    return [int]$dimensions[0], [int]$dimensions[1]
+}
+
+function square {
+    param (
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$InputPath,
+        [Parameter()]
+        [int]$Size,
+        [Parameter()]
+        [System.IO.FileInfo]$OutputPath
+    )
+
+    $ErrorActionPreference = "Stop"
+
+    $InputPath = (Resolve-Path $InputPath).Path
+    if (-not $InputPath.Exists) {
+        Write-Error "Input file does not exist: $($InputPath.FullName)"
+        return
+    }
+
+    if (-not $Size) {
+        $Dimensions = Get-ImageDimension -ImagePath $InputPath
+        $Size = [Math]::Max($Dimensions[0], $Dimensions[1])
+    }
+
+    if (-not $OutputPath) {
+        $OutputPath = [System.IO.FileInfo]::new("$($InputPath.Directory)\$($InputPath.BaseName).$Size$($InputPath.Extension)")
+    }
+
+    if ($OutputPath.Exists) {
+        Write-Host "Output file already exists: $($OutputPath.FullName)"
+        return
+    }
+    
+    magick.exe -background none -gravity center $InputPath.FullName -resize ${Size}x${Size} -extent ${Size}x${Size} $OutputPath.FullName
+}
+
+function which {
+    param (
+        [string] $command
+    )
+    $cmd = Get-Command $command -ErrorAction SilentlyContinue
+    return $cmd.Definition
+}
+
+$env:KUBE_EDITOR = "code --wait"
+
+kubectl completion powershell | Out-String | Invoke-Expression
+New-CommandAlias -Name k   -Command kubectl
+New-CommandAlias -Name ktx -Command kubectl -AliasArgs config, use-context

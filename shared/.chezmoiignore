@@ -1,0 +1,5 @@
+{{ if eq .chezmoi.os "windows" }}
+setup-git-identities.sh
+{{ else }}
+setup-git-identities.ps1
+{{ end }}

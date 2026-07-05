@@ -1,0 +1,6 @@
+[Unit]
+Description=Check and count available package updates.
+
+[Service]
+Type=oneshot
+ExecStart="%h/scripts/dependencies/update-check.sh"

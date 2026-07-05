@@ -1,0 +1,33 @@
+[user]
+    useConfigOnly = true
+[core]
+    editor = code -w
+    hooksPath = ~/.git_hooks
+[init]
+    defaultBranch = main
+[push]
+    autoSetupRemote = true
+[pull]
+    rebase = true
+    autoStash = true
+[rebase]
+    autoStash = true
+[gpg]
+    format = ssh
+[gpg "ssh"]
+    allowedSignersFile = ~/.config/git/allowed_signers
+[commit]
+    gpgsign = true
+[pager]
+    branch = false
+[filter "lfs"]
+    clean = git-lfs clean -- %f
+    smudge = git-lfs smudge -- %f
+    process = git-lfs filter-process
+    required = true
+{{- range $key, $id := .identities }}
+[includeIf "hasconfig:remote.*.url:https://{{ $id.host }}/**/**"]
+    path = ~/.gitconfig.d/{{ $key }}
+[includeIf "hasconfig:remote.*.url:git@{{ $id.host }}:**/**"]
+    path = ~/.gitconfig.d/{{ $key }}
+{{- end }}

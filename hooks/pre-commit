@@ -1,0 +1,30 @@
+#!/usr/bin/env sh
+set -e
+# 1) gitleaks — generic secrets/keys
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks git --staged --redact -c "$(git rev-parse --show-toplevel)/.gitleaks.toml" . || {
+    echo "pre-commit: gitleaks found a secret — commit blocked." >&2; exit 1; }
+else
+  echo "pre-commit: WARNING gitleaks not installed — skipping secret scan." >&2
+fi
+# 2) custom denylist — known-private strings, sourced from OUTSIDE this repo.
+#    DOTFILES_DENYLIST points at a file in the PRIVATE data repo (never in this repo).
+DL="${DOTFILES_DENYLIST:-$HOME/.config/dotfiles/denylist.txt}"
+if [ -f "$DL" ]; then
+  staged_list="$(mktemp)"
+  git diff --cached --name-only > "$staged_list"
+  # Read staged files via redirection (NOT a pipe) so `exit 1` exits the hook,
+  # and `read -r` preserves filenames containing spaces.
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    while IFS= read -r pat; do
+      [ -n "$pat" ] || continue
+      if grep -qF -- "$pat" "$f"; then
+        echo "pre-commit: denylisted string in $f — commit blocked." >&2
+        rm -f "$staged_list"; exit 1
+      fi
+    done < "$DL"
+  done < "$staged_list"
+  rm -f "$staged_list"
+fi
+exit 0

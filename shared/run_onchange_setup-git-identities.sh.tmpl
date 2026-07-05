@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+set -e
+dir="$HOME/.gitconfig.d"
+mkdir -p "$dir"
+{{ range $key, $id := .identities -}}
+cat > "$dir/{{ $key }}" <<'EOF'
+[user]
+    name = {{ $id.name }}
+    email = {{ $id.email }}
+    signingkey = {{ $id.signingKey }}
+EOF
+{{ end -}}

@@ -1,0 +1,436 @@
+#!/usr/bin/env zsh
+
+DOTFILES_DEBUG=false
+
+zmodload zsh/datetime
+typeset -U fpath path
+_MEASURE_STACK_TIMES=()
+_MEASURE_STACK_MSGS=()
+_MEASURE_STACK_ROWS=()
+_MEASURE_STACK_DBGLINES=()
+_DEBUG_LINE_COUNT=0
+
+function _debug_cursor_row {
+  # Writes the current terminal cursor row into _CURSOR_ROW (avoids subshell).
+  # Uses /dev/tty explicitly so stty always targets the real terminal even
+  # when stdin is a pipe (e.g. inside $(...) command substitution).
+  _CURSOR_ROW=0
+  [[ -e /dev/tty ]] || return
+  local old_stty IFS= response
+  old_stty=$(stty -g </dev/tty 2>/dev/null) || return
+  stty -echo -icanon min 1 time 0 </dev/tty 2>/dev/null
+  printf '\e[6n' >/dev/tty
+  read -r -t 1 -d R response </dev/tty 2>/dev/null
+  stty "$old_stty" </dev/tty 2>/dev/null
+  response="${response##*\[}"
+  _CURSOR_ROW="${response%%;*}"
+}
+
+function debug {
+  if [ "$DOTFILES_DEBUG" != "true" ]; then
+    return
+  fi
+
+  printf "[\e[0;35mDebug        \e[0m]: %s\n" "$*"
+  (( _DEBUG_LINE_COUNT++ ))
+}
+
+function debug_measure_start {
+  if [ "$DOTFILES_DEBUG" != "true" ]; then
+    return
+  fi
+
+  _MEASURE_STACK_TIMES+=($EPOCHREALTIME)
+  _MEASURE_STACK_MSGS+=("$*")
+
+  if [[ -t 1 ]]; then
+    _debug_cursor_row
+    local _term_rows=${LINES:-24}
+    # If already at the last visible row, printing \n will scroll the terminal:
+    # the placeholder lands at LINES-1 while the cursor stays at LINES.
+    # Store the post-scroll row so end_row - start_row = 1, not 0.
+    if (( _CURSOR_ROW == _term_rows )); then
+      _MEASURE_STACK_ROWS+=($(( _term_rows - 1 )))
+    else
+      _MEASURE_STACK_ROWS+=($_CURSOR_ROW)
+    fi
+    _MEASURE_STACK_DBGLINES+=($_DEBUG_LINE_COUNT)
+    printf "[\e[0;35mDebug( .... )\e[0m]: %s\n" "$*"
+    (( _DEBUG_LINE_COUNT++ ))
+  else
+    # stdout is buffered (e.g. p10k instant prompt); skip placeholder
+    _MEASURE_STACK_ROWS+=(-1)
+    _MEASURE_STACK_DBGLINES+=(-1)
+  fi
+}
+
+function debug_measure_end {
+  if [ "$DOTFILES_DEBUG" != "true" ]; then
+    return
+  fi
+
+  local _n=${#_MEASURE_STACK_MSGS}
+  (( _n < 1 )) && return
+
+  local _start_time=${_MEASURE_STACK_TIMES[$_n]}
+  local _start_msg=${_MEASURE_STACK_MSGS[$_n]}
+  local _start_row=${_MEASURE_STACK_ROWS[$_n]}
+  local _start_dbg=${_MEASURE_STACK_DBGLINES[$_n]}
+  _MEASURE_STACK_TIMES[$_n]=()
+  _MEASURE_STACK_MSGS[$_n]=()
+  _MEASURE_STACK_ROWS[$_n]=()
+  _MEASURE_STACK_DBGLINES[$_n]=()
+
+  local now=$EPOCHREALTIME
+  local delta=$(( (now - _start_time) * 1000 ))
+
+  local time_val unit
+  if (( delta >= 10000 )); then
+    time_val=$(printf "%.1f" $(( delta / 1000.0 )))
+    unit="s"
+  elif (( delta >= 1000 )); then
+    time_val=$(printf "%.2f" $(( delta / 1000.0 )))
+    unit="s"
+  else
+    time_val=$(printf "%3.0f" $delta)
+    unit="ms"
+  fi
+
+  if (( _start_row == -1 )); then
+    printf "[\e[0;35mDebug(\e[0;34m%s \e[0;31m%s\e[0;35m)\e[0m]: %s\n" \
+      "$time_val" "$unit" "$_start_msg"
+    return
+  fi
+
+  _debug_cursor_row
+  local end_row=$_CURSOR_ROW
+  local lines_back=$(( end_row - _start_row ))
+  local terminal_lines=${LINES:-24}
+  local dbg_lines=$(( _DEBUG_LINE_COUNT - _start_dbg ))
+
+  # At the scroll boundary, back=1 is unreliable for outer measurements:
+  # inner content scrolled the placeholder further up, so cursor-up 1 would
+  # hit the wrong line. Fall through to FALLBACK for those.
+  local will_overwrite=0
+  if (( lines_back >= 1 && lines_back <= terminal_lines )); then
+    if (( end_row < terminal_lines || dbg_lines <= 1 )); then
+      will_overwrite=1
+    fi
+  fi
+
+  if (( will_overwrite )); then
+    printf "\e[%dA\e[2K\r[\e[0;35mDebug(\e[0;34m%s \e[0;31m%s\e[0;35m)\e[0m]: %s\n" \
+      "$lines_back" "$time_val" "$unit" "$_start_msg"
+    (( lines_back > 1 )) && printf "\e[%dB" $(( lines_back - 1 ))
+  else
+    printf "[\e[0;35mDebug(\e[0;34m%s \e[0;31m%s\e[0;35m)\e[0m]: %s\n" \
+      "$time_val" "$unit" "$_start_msg"
+    (( _DEBUG_LINE_COUNT++ ))
+  fi
+}
+
+debug_measure_start "Loading .zshrc"
+# Path to your oh-my-zsh installation.
+# export ZSH="/home/$USER/.oh-my-zsh"
+export ZSH="$HOME/.oh-my-zsh"
+export XDG_CONFIG_HOME=$HOME/.config
+export PATH=$HOME/.local/bin:/usr/local/bin:$PATH
+export P10K_DIR="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
+
+if [ ! -d "$ZSH" ]; then
+  debug_measure_start "Installing Oh My Zsh"
+  export KEEP_ZSHRC="yes"
+  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+  debug_measure_end
+fi
+
+if [ ! -d "$P10K_DIR" ]; then
+  debug_measure_start "Installing Powerlevel10k"
+  git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$P10K_DIR"
+  debug_measure_end
+fi
+
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+# Set name of the theme to load --- if set to "random", it will
+# load a random theme each time oh-my-zsh is loaded, in which case,
+# to know which specific one was loaded, run: echo $RANDOM_THEME
+# See https://github.com/robbyrussell/oh-my-zsh/wiki/Themes
+ZSH_THEME="powerlevel10k/powerlevel10k"
+#ZSH_THEME="agnoster"
+
+# Set list of themes to pick from when loading at random
+# Setting this variable when ZSH_THEME=random will cause zsh to load
+# a theme from this variable instead of looking in ~/.oh-my-zsh/themes/
+# If set to an empty array, this variable will have no effect.
+# ZSH_THEME_RANDOM_CANDIDATES=( "robbyrussell" "agnoster" )
+
+# Uncomment the following line to use case-sensitive completion.
+# CASE_SENSITIVE="true"
+
+# Uncomment the following line to use hyphen-insensitive completion.
+# Case-sensitive completion must be off. _ and - will be interchangeable.
+# HYPHEN_INSENSITIVE="true"
+
+# Uncomment the following line to disable bi-weekly auto-update checks.
+# DISABLE_AUTO_UPDATE="true"
+
+# Uncomment the following line to automatically update without prompting.
+DISABLE_UPDATE_PROMPT="true"
+
+# Uncomment the following line to change how often to auto-update (in days).
+# export UPDATE_ZSH_DAYS=13
+
+# Uncomment the following line if pasting URLs and other text is messed up.
+# DISABLE_MAGIC_FUNCTIONS=true
+
+# Uncomment the following line to disable colors in ls.
+# DISABLE_LS_COLORS="true"
+
+# Uncomment the following line to disable auto-setting terminal title.
+# DISABLE_AUTO_TITLE="true"
+
+# Uncomment the following line to enable command auto-correction.
+# ENABLE_CORRECTION="true"
+
+# Uncomment the following line to display red dots whilst waiting for completion.
+COMPLETION_WAITING_DOTS="true"
+
+# Uncomment the following line if you want to disable marking untracked files
+# under VCS as dirty. This makes repository status check for large repositories
+# much, much faster.
+# DISABLE_UNTRACKED_FILES_DIRTY="true"
+
+# Uncomment the following line if you want to change the command execution time
+# stamp shown in the history command output.
+# You can set one of the optional three formats:
+# "mm/dd/yyyy"|"dd.mm.yyyy"|"yyyy-mm-dd"
+# or set a custom format using the strftime function format specifications,
+# see 'man strftime' for details.
+HIST_STAMPS="yyyy-mm-dd"
+
+# Would you like to use another custom folder than $ZSH/custom?
+# ZSH_CUSTOM=/path/to/new-custom-folder
+
+# Which plugins would you like to load?
+# Standard plugins can be found in ~/.oh-my-zsh/plugins/*
+# Custom plugins may be added to ~/.oh-my-zsh/custom/plugins/
+# Example format: plugins=(rails git textmate ruby lighthouse)
+# Add wisely, as too many plugins slow down shell startup.
+plugins=(
+  git
+  command-not-found
+  node
+  npm
+  yarn
+  sudo
+  docker
+  docker-compose
+  kubectl
+  microk8s
+  zsh-autosuggestions
+  rust
+  azure
+  dotnet
+  argocd
+)
+
+debug_measure_start "source oh-my-zsh"
+source $ZSH/oh-my-zsh.sh
+debug_measure_end
+
+# User configuration
+debug_measure_start "Checking if we're in WSL"
+# only run in WSL
+if [[ $(grep -i Microsoft /proc/version) ]]; then
+  export IS_WSL=1
+  $HOME/.agent-bridge.sh
+else
+  export IS_WSL=0
+fi
+debug_measure_end
+debug "IS_WSL: $IS_WSL"
+
+debug_measure_start "Checking for config drift (chezmoi status)"
+# Drift detection (replaces the old ~/Projects/dotfiles git-status check). chezmoi
+# now owns the source of truth, so compare the deployed files against the source.
+if command -v chezmoi >/dev/null 2>&1; then
+  [ -n "$(chezmoi status 2>/dev/null | head -1)" ] && echo "chezmoi: managed files differ — run 'chezmoi diff'"
+fi
+debug_measure_end
+
+# echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+# ssh-add -l
+debug_measure_start "Checking SSH_AUTH_SOCK for forwarded agent"
+if [ -n "$SSH_CONNECTION" ] && [[ "$SSH_AUTH_SOCK" == /tmp* || "$SSH_AUTH_SOCK" == /run/user/$(id -u)/vscode-ssh-auth-sock* ]] ; then
+  echo 'Using forwarded $SSH_AUTH_SOCK'
+else
+  echo 'Using local 1Password SSH_AUTH_SOCK'
+  export SSH_AUTH_SOCK=~/.1password/agent.sock
+fi
+debug_measure_end
+
+#! needed in aliases for completion registration
+debug_measure_start "Setting up completion system"
+autoload -U +X compinit
+# oh-my-zsh already ran a full compinit; reuse its fresh dump unless it's stale (>24h)
+if [[ -n ${ZDOTDIR:-$HOME}/.zcompdump(#qN.mh+24) ]]; then
+  compinit
+else
+  compinit -C
+fi
+autoload -U +X bashcompinit && bashcompinit
+debug_measure_end
+
+debug_measure_start "Adding custom script directories to PATH"
+# chezmoi deploys scripts to ~/scripts; add each immediate subdir to PATH.
+for dir in "$HOME"/scripts/*(/N); do
+  debug " - Adding $dir to PATH"
+  export PATH="$PATH:$dir"
+done
+debug_measure_end
+
+# PATH and other env variables hav to be set before loading functions and aliases
+# functions before aliases so aliases can use functions
+debug_measure_start "Sourcing functions"
+[[ ! -f ~/.functions.zsh ]] || source ~/.functions.zsh
+debug_measure_end
+
+debug_measure_start "Sourcing aliases"
+[[ ! -f ~/.aliases.zsh ]] || source ~/.aliases.zsh
+debug_measure_end
+# always on end
+debug_measure_start "Reporting missing dependencies"
+reportMissing
+debug_measure_end
+
+# export MANPATH="/usr/local/man:$MANPATH"
+
+# You may need to manually set your language environment
+# export LANG=en_US.UTF-8
+
+# Preferred editor for local and remote sessions
+if [[ -n $SSH_CONNECTION ]]; then
+  export EDITOR='nvim'
+else
+  # export EDITOR='code --wait'
+  export EDITOR='nvim'
+fi
+
+# Compilation flags
+# export ARCHFLAGS="-arch x86_64"
+
+# Set personal aliases, overriding those provided by oh-my-zsh libs,
+# plugins, and themes. Aliases can be placed here, though oh-my-zsh
+# users are encouraged to define aliases within the ZSH_CUSTOM folder.
+# For a full list of active aliases, run `alias`.
+#
+# Example aliases
+# alias zshconfig="mate ~/.zshrc"
+# alias ohmyzsh="mate ~/.oh-my-zsh"
+
+DEFAULT_USER=$USER
+
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+if [[ -f /etc/bash_completion.d/azure-cli ]]; then
+  source /etc/bash_completion.d/azure-cli
+fi
+
+
+# Kube Config Setup
+files=(~/.kube/config ~/.kube/*.config(N))
+if [[ $#files != 0 ]]; then
+  valid=()
+  for f in $files; do 
+    if [ -f "$f" ]; then
+      valid+=("$f")
+    fi
+  done
+
+  if [[ $#valid != 0 ]]; then
+    # zsh equivalent of string join
+    export KUBECONFIG=${(j/:/)valid}
+  fi
+fi
+
+export LOKI_ADDR={{ .linux.work.lokiAddr }}
+
+if [ -f "$HOME/.local/bin/mc" ]; then
+  complete -o nospace -C "$HOME/.local/bin/mc" mc
+fi
+
+#region PATH
+
+# snap
+ifpath_prepend "/snap/bin"
+
+# mssql-tools
+ifpath "/opt/mssql-tools/bin/"
+
+# krew
+ifpath_prepend "${KREW_ROOT:-$HOME/.krew}/bin"
+
+# dotnet tools
+ifpath "$HOME/.dotnet/tools"
+
+# Sophos Client Authentication Agent (CAA)
+ifpath "$HOME/Programs/Sophos/CAA/bin"
+
+# Consul Template
+ifpath "$HOME/Programs/consul-template"
+
+#endregion
+
+# Load Angular CLI autocompletion.
+if type ng > /dev/null; then
+  source <(ng completion script)
+fi
+
+
+# TODO add check for current domain
+export VAULT_ADDR="{{ .linux.work.vaultAddr }}"
+
+# https://superuser.com/a/1242888/685008
+# zsh keeps setting very long titles
+export ZSH_THEME_TERM_TITLE_IDLE="%~"
+
+# ssh config + fzf = interactive ssh menu - thx @Andreas! :)
+# Source: https://dev.to/kaeruct/fzf-ssh-config-hosts-23dj
+s () {
+  local server
+  server=$(grep -E '^Host ' ~/.ssh/config | awk '{print $2}' | fzf --query "$*" --select-1 --exit-0)
+  if [[ -n $server ]]; then
+    ssh $server
+  fi
+}
+
+OP_PLUGINS_SCRIPT="{{ .linux.work.opPluginsScript }}"
+[ -f "$OP_PLUGINS_SCRIPT" ] && source "$OP_PLUGINS_SCRIPT"
+
+# AWX CLI Config
+export TOWER_HOST={{ .linux.work.towerHost }}
+export TOWER_OAUTH_TOKEN="{{ .linux.work.towerToken }}"
+
+
+export CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+export NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
+PLASMA_ENV_DIR="$HOME/.config/plasma-workspace/env"
+PLASMA_ENV_SCRIPT="$PLASMA_ENV_DIR/env-vars.sh"
+[ ! -d "$PLASMA_ENV_DIR" ] && mkdir -p "$PLASMA_ENV_DIR"
+echo "export PATH=\"$PATH\"" >"$PLASMA_ENV_SCRIPT"
+echo "export SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >>"$PLASMA_ENV_SCRIPT"
+chmod +x "$PLASMA_ENV_SCRIPT"
+[ -f "$HOME/.acme.sh/acme.sh.env" ] && source "$HOME/.acme.sh/acme.sh.env"
+debug_measure_end
+
+# Reminder: the dev/edit aliases were rewired to chezmoi during the migration.
+echo "↻ chezmoi-native aliases: cz/cza/czf/csc = edit source (auto-apply) · dotfiles = chezmoi cd"

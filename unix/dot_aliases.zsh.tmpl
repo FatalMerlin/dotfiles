@@ -1,0 +1,123 @@
+alias help=run-help
+alias sudosh='sudo -E ZDOTDIR=$HOME/.zsh-root ZSH_DISABLE_COMPFIX=true zsh'
+
+# chezmoi is the apply-engine only; the repo holds three sources (shared/unix/windows).
+export DOTFILES_SRC="$HOME/.local/share/chezmoi"
+dfa () { chezmoi apply -S "$DOTFILES_SRC/shared" && chezmoi apply -S "$DOTFILES_SRC/unix"; }   # dotfiles apply
+dfu () { git -C "$DOTFILES_SRC" pull --ff-only && dfa; }                                        # dotfiles update
+
+# Cache the output of a completion/alias-generating command.
+# Regenerates automatically when the binary is newer than the cache.
+# Usage: cache_completion NAME CMD [ARGS...]
+function cache_completion() {
+  local name="$1"; shift
+  local bin="${commands[$name]}"
+  [[ -n "$bin" ]] || return 1
+  local cache="${XDG_CACHE_HOME:-$HOME/.cache}/zsh/completions/$name"
+  if [[ ! -f "$cache" || "$bin" -nt "$cache" ]]; then
+    mkdir -p "${cache:h}"
+    "$@" > "$cache" 2>/dev/null || { rm -f "$cache"; return 1; }
+  fi
+  source "$cache"
+}
+
+alias dotfiles='cd "$DOTFILES_SRC"'
+
+debug_measure_start "aliases: brew.zsh"
+. ~/dependencies/brew.zsh
+debug_measure_end
+
+debug_measure_start "aliases: cargo.zsh"
+. ~/dependencies/cargo.zsh
+debug_measure_end
+
+debug_measure_start "aliases: custom.zsh"
+. ~/dependencies/custom.zsh
+debug_measure_end
+
+debug_measure_start "aliases: package-manager.zsh"
+. ~/dependencies/package-manager.zsh
+debug_measure_end
+
+# WSL Block
+debug_measure_start "aliases: WSL block"
+if command -v powershell.exe >/dev/null; then
+    WIN_USER_HOME=$(wslpath -au $(powershell.exe -NoLogo -NoProfile -NonInteractive -Command 'Write-Output "$env:USERPROFILE"' | tr -d '\r'))
+    if [ -d "$WIN_USER_HOME" ]; then
+        WIN_APP_DATA="${WIN_USER_HOME}/AppData/Roaming"
+        DEV_CONTAINER_CLI_PATH="${WIN_APP_DATA}/Code/User/globalStorage/ms-vscode-remote.remote-containers/cli-bin/devcontainer"
+        PATH="$PATH:$DEV_CONTAINER_CLI_PATH"
+    fi
+fi
+debug_measure_end
+
+#* workaround for JetBrains IDEs never detaching from the shell on linux
+debug_measure_start "aliases: JetBrains toolbox"
+JETBRAINS_TOOLBOX_SCRIPTS="$HOME/.local/share/JetBrains/Toolbox/scripts"
+if [ -d "$JETBRAINS_TOOLBOX_SCRIPTS" ]; then
+    for script in "$JETBRAINS_TOOLBOX_SCRIPTS"/*; do
+        if ! [ -f "$script" ]; then continue; fi
+        if ! [ -x "$script" ]; then continue; fi
+
+        alias_name="${script:t}"
+        alias_cmd="start_disowned $script"
+        alias "$alias_name"="$alias_cmd"
+    done
+fi
+debug_measure_end
+
+# Regular Aliases
+
+alias n="nvim"
+
+alias nz='EDITOR=nano chezmoi edit --watch -S "$DOTFILES_SRC/unix" ~/.zshrc'
+alias cz='chezmoi edit --watch -S "$DOTFILES_SRC/unix" ~/.zshrc'
+alias sz="source ~/.zshrc"
+
+alias nza='EDITOR=nano chezmoi edit --watch -S "$DOTFILES_SRC/unix" ~/.aliases.zsh'
+alias cza='chezmoi edit --watch -S "$DOTFILES_SRC/unix" ~/.aliases.zsh'
+alias sza="source ~/.aliases.zsh"
+
+alias nzf='EDITOR=nano chezmoi edit --watch -S "$DOTFILES_SRC/unix" ~/.functions.zsh'
+alias czf='chezmoi edit --watch -S "$DOTFILES_SRC/unix" ~/.functions.zsh'
+alias szf="source ~/.functions.zsh"
+
+alias nsc='EDITOR=nano chezmoi edit --watch -S "$DOTFILES_SRC/shared" ~/.ssh/config'
+alias csc='chezmoi edit --watch -S "$DOTFILES_SRC/shared" ~/.ssh/config'
+
+alias nkc="nano ~/.kube/config"
+alias ckc="code ~/.kube/config"
+
+alias ndf='nano "$DOTFILES_SRC"'
+alias cdf='code "$DOTFILES_SRC"'
+
+alias cls="clear"
+
+alias cpuspeed='watch -n.1 "grep \"^[c]pu MHz\" /proc/cpuinfo"'
+alias cw='code *.code-workspace'
+alias ktx='k config use-context'
+alias kns='k config set-context --current --namespace'
+# copy last used command to clipboard
+alias cpl='fc -ln -1 | tee /dev/tty | xsel --clipboard'
+alias tmux="tmux new -As default"
+
+alias lls='loginctl list-sessions'
+alias lts='loginctl terminate-session'
+
+alias kl='kubectl --context live'
+alias ki='kubectl --context infra'
+alias kt='kubectl --context test'
+alias kr='kubectl --context rancher'
+
+alias k9l='k9s --context live'
+alias k9i='k9s --context infra'
+alias k9t='k9s --context test'
+alias k9r='k9s --context rancher'
+
+# Run with resolved secrets from 1Password
+alias awx='opx awx'
+
+if [ "$HOST" = "{{ .linux.work.host }}" ]; then
+    export AZURE_OPENAI_API_KEY="{{ .linux.work.azureOpenAiKey }}"
+    alias codex='OP_ACCOUNT={{ .linux.work.opAccount }} opx codex'
+fi

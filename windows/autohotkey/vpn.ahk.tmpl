@@ -1,0 +1,52 @@
+﻿#Requires AutoHotkey v2.0
+#SingleInstance Force
+
+#Include ./utils.ahk
+
+vpnBaseWindowFilter := 'ahk_exe openvpn-gui.exe ahk_class #32770'
+vpnConnectWindowTitle := '{{ .windows.vpn.connectTitle }}'
+vpnCredentialWindowTitle := '{{ .windows.vpn.credentialTitle }}'
+vpnConnectWindowFilter := vpnConnectWindowTitle " " vpnBaseWindowFilter
+vpnCredentialWindowFilter := vpnCredentialWindowTitle " " vpnBaseWindowFilter
+
+AuthAndConnect() {
+    ; WinMinimize(vpnCredentialWindowFilter)
+
+    ControlSetText("Autofilling...", "Edit1", vpnCredentialWindowFilter)
+
+    opResult := GetOpSecret("{{ .windows.onepassword.account }}", "{{ .windows.onepassword.vpnItem }}", "username,password,one-time password")
+
+    username := opResult[1]
+    passWithOtp := opResult[2] opResult[3]
+
+    WinActivate(vpnCredentialWindowFilter)
+    Sleep(100)
+    ControlSetText(username, "Edit1", vpnCredentialWindowFilter)
+    Sleep(100)
+    ControlSetText(passWithOtp, "Edit2", vpnCredentialWindowFilter)
+    Sleep(100)
+    ControlSetChecked(0, "Button1", vpnCredentialWindowFilter)
+    Sleep(100)
+    while (ControlGetEnabled("Button2", vpnCredentialWindowFilter) == 0) {
+        Sleep(100)
+    }
+    ControlFocus("Button2", vpnCredentialWindowFilter)
+    Sleep(100)
+
+    while (WinExist(vpnCredentialWindowFilter)) {
+        ControlClick("Button2", vpnCredentialWindowFilter)
+        Sleep(100)
+    }
+}
+
+VPNLoop() {
+    SetTitleMatchMode(3)
+    if (WinActive(vpnCredentialWindowFilter)) {
+        try {
+            AuthAndConnect()
+            WinWaitClose(vpnConnectWindowFilter, 3000)
+        } catch Error as e {
+            WinClose(vpnCredentialWindowFilter)
+        }
+    }
+}

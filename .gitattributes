@@ -1,0 +1,5 @@
+# Normalize every text file to LF in the repo and on checkout on all platforms.
+# chezmoi applies source bytes verbatim, so LF keeps the shell scripts and templates
+# it deploys to Linux working; PowerShell, AutoHotkey, oh-my-posh, and JSON all tolerate
+# LF on Windows. This prevents CRLF-in-.sh breakage for anyone who forks the repo.
+* text=auto eol=lf

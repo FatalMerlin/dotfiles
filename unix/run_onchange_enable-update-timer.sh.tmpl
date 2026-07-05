@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# Enable the systemd --user timer that runs the hourly update-check (+ chezmoi-drift)
+# script. run_onchange: re-runs only when either systemd unit's content changes (hash below).
+# hash: {{ printf "%s%s" (include "dot_config/systemd/user/dotfiles-update-check.timer") (include "dot_config/systemd/user/dotfiles-update-check.service") | sha256sum }}
+systemctl --user daemon-reload 2>/dev/null || true
+systemctl --user enable --now dotfiles-update-check.timer 2>/dev/null || true

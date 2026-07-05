@@ -1,0 +1,6 @@
+{{ if not .features.windows.autohotkey }}
+autohotkey/**
+{{ end }}
+{{ if not .features.windows.micSwitcher }}
+mic-switcher.ps1
+{{ end }}

@@ -1,0 +1,31 @@
+#Requires AutoHotkey v2.0
+#SingleInstance Force
+
+#Include ./utils.ahk
+
+thinlincWindowFilter := "ThinLinc client ahk_exe tlclient.exe ahk_class thinlinc-client"
+
+ThinLincAutoConnect() {
+    opResult := GetOpSecret("{{ .windows.onepassword.account }}", "{{ .windows.onepassword.vpnItem }}", "password")
+
+    if (opResult.Length != 1) {
+        return
+    }
+
+    thinLincPassword := opResult[1]
+
+    WinActivate(thinlincWindowFilter)
+    Send(thinLincPassword)
+    Sleep(100)
+    Send("{Enter}")
+    if (WinWaitClose(thinlincWindowFilter) == 0) {
+        WinClose(thinlincWindowFilter)
+    }
+}
+
+ThinLincLoop() {
+    SetTitleMatchMode(3)
+    if (WinExist(thinlincWindowFilter)) {
+        ThinLincAutoConnect()
+    }
+}

@@ -1,0 +1,3 @@
+# Empty identity defaults so a stranger's apply renders benign empties (no undefined-key error).
+# Real identities come from the private chezmoi.toml [data], deep-merged over this.
+identities: {}
