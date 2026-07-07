@@ -1,34 +1,16 @@
-#!/usr/bin/env bash
-set -eEuo pipefail
+#!/usr/bin/env -S bash -eEuo pipefail
+# Strict mode (-eEuo pipefail) applies on direct execution; ignored when sourced.
+. "$HOME/.config/dotfiles/lib/core.sh"
+. "$HOME/.config/dotfiles/lib/harness.sh"
 
 # https://api.github.com/repos/owner/repo/releases
 
-function ensure_command {
-    if ! command -v "$1" >/dev/null; then
-        echo "Missing '$1'"
-        exit 1
-    fi
-}
+_USAGE='<owner>/<repo> <filter>   e.g. TheAssassin/AppImageLauncher "*amd64.deb"'
 
-function usage {
-    echo "Usage  : $0 <owner>/<repo> <filter>"
-    echo "Example: $0 TheAssassin/AppImageLauncher '*amd64.deb'"
-}
+have jq || die "missing: jq"
+have curl || die "missing: curl"
 
-ensure_command jq
-ensure_command curl
-
-if [ -z "$1" ]; then
-    echo "Missing repo: <owner>/<repo>"
-    usage
-    exit 1
-fi
-
-if [ -z "$2" ]; then
-    echo "Missing filter: <filter>"
-    usage
-    exit 1
-fi
+require_args 2 "$#"
 
 latest_assets=$(
     curl -sSLf "https://api.github.com/repos/$1/releases/latest" \

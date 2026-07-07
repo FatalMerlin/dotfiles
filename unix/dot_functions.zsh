@@ -1,8 +1,16 @@
 # allow re-sourcing after `installMissing`
-unset missing
-declare -A missing
 unset _DPKG_STATUS
 typeset -gA _DPKG_STATUS
+# Legacy install-recipe cache, keyed by tool name, `<source>:<package>` format
+# (parsed by getInstallInstructions below). The "missing" TALLY itself now
+# lives in core.sh's _DEP_MISSING_COUNT/_DEP_MISSING_LIST (dep_mark_missing) —
+# ifcmd/ifpkg/ifalias below still detect legacy (brew/rustup bootstrap +
+# jiratui) misses and record them here so `im`/`lm` can still resolve an
+# install command for them, but presence in the "is anything missing" set is
+# tracked centrally so the manifest-driven deps.sh guards and these legacy
+# primitives share one unified report (see core.sh dep_report_missing).
+unset _DEP_RECIPE
+typeset -gA _DEP_RECIPE
 
 function fal {
     alias | grep -- "$*"
@@ -111,7 +119,8 @@ function getInstallInstructions {
     echo "$installCmd"
 }
 
-# checks if command exists and if not, adds it to the missing array
+# checks if command exists and if not, records it as missing on the shared
+# core.sh tally (dep_mark_missing) plus this file's legacy recipe cache
 # usage:
 #   ifcmd commandName commandSource commandPackageName
 # example:
@@ -120,9 +129,9 @@ function ifcmd {
     # Full path given (e.g. /home/linuxbrew/.linuxbrew/bin/brew): test executability directly.
     # Short name: use zsh commands hash — avoids forking a subshell for every check.
     if [[ "$1" == /* ]]; then
-        [[ -x "$1" ]] || { missing["$1"]="$2:$3"; return 1; }
+        [[ -x "$1" ]] || { dep_mark_missing "$1"; _DEP_RECIPE["$1"]="$2:$3"; return 1; }
     else
-        [[ -n "${commands[$1]}" ]] || { missing["$1"]="$2:$3"; return 1; }
+        [[ -n "${commands[$1]}" ]] || { dep_mark_missing "$1"; _DEP_RECIPE["$1"]="$2:$3"; return 1; }
     fi
 }
 
@@ -137,7 +146,8 @@ function _ensure_dpkg_status() {
 function ifpkg {
     _ensure_dpkg_status
     if [[ "${_DPKG_STATUS[$1]}" != *"install ok"* ]]; then
-        missing["$1"]="apt:$1"
+        dep_mark_missing "$1"
+        _DEP_RECIPE["$1"]="apt:$1"
         return 1
     fi
 }
@@ -170,27 +180,28 @@ function ifalias {
     return 1
 }
 
-# reports missing commands
-# has to be called after sourcing functions and aliases
-# or after the last `ifalias` or `ifcmd` use
-# but before the p10k instant prompt
-function reportMissing {
-    countMissing=${#missing[@]}
+# `reportMissing` is gone — its job moved to core.sh's `dep_report_missing`,
+# called once from dot_zshrc.tmpl after ALL sourcing (manifest deps.sh AND
+# these legacy bootstraps), so the count/hint covers both in one line.
 
-    if [ $countMissing -gt 0 ]; then
-        echo "$countMissing missing packages detected"
-	echo "> listMissing (lm)"
-    fi
+# Path to the resolver-emitted install-plan.sh (Task 20a): topo-sorted
+# `<name>\t<manager>\t<source-or-install-command>` rows, one manifest tool per
+# line (needs-before-dependent order), `#`-comment/blank lines ignorable.
+# Same env knob the resolver writes with (run_onchange_resolve-deps.sh.tmpl),
+# so tests (and any future alt-HOME run) can redirect both sides consistently.
+_dep_plan_path() {
+    echo "${DEPS_OUT_DIR:-$HOME/.config/dotfiles}/install-plan.sh"
 }
 
 # lists missing commands
-# stored in the `missing` associative array
-# if called with any argument, no info for the installMissing
+# missing-tool NAMES come from the shared core.sh tally (_DEP_MISSING_LIST,
+# populated by manifest deps.sh guards AND the re-plumbed ifcmd/ifpkg/ifalias
+# above). if called with any argument, no info for the installMissing
 # command will be printed
 function listMissing {
-    if [ ${#missing[@]} -gt 0 ]; then
+    if [ "${_DEP_MISSING_COUNT:-0}" -gt 0 ]; then
         echo "The following packages are missing from your system:"
-        for cmd in "${(@k)missing}"; do
+        for cmd in ${=_DEP_MISSING_LIST}; do
             echo "> $cmd"
         done
 
@@ -205,43 +216,101 @@ function listMissing {
 }
 alias lm=listMissing
 
-# installs missing commands
+# installs missing commands.
+#
+# Data sources for a missing tool's install recipe (checked in this order):
+#   1. install-plan.sh (manifest tools, from the resolver) — topo order.
+#   2. _DEP_RECIPE (legacy brew/rustup MANAGER bootstraps + jiratui, recorded
+#      by the re-plumbed ifcmd/ifpkg/ifalias above).
+#
+# Install ORDER: legacy _DEP_RECIPE bootstraps run FIRST, then install-plan
+# rows in topo order — brew/rustup are package MANAGERS, so brew-managed
+# manifest tools can't install before brew itself exists.
+#
+# DRY_RUN=1 im: prints the resolved install command for every currently-
+# missing candidate, in order, WITHOUT prompting or eval'ing anything (used
+# by tests/test-provisioner.sh to assert ordering/filtering deterministically).
 function installMissing {
-    if [ ${#missing[@]} -gt 0 ]; then
-        listMissing noCmdInfo
+    if [ "${_DEP_MISSING_COUNT:-0}" -eq 0 ]; then
+        return
+    fi
 
+    listMissing noCmdInfo
+
+    if [ -z "${DRY_RUN:-}" ]; then
         echo
         read -q "REPLY?Do you want to install the missing packages? [y/N]: "
         echo
 
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             echo "Aborting."
-            return;
+            return
         fi
-
-        for cmd info in "${(@kv)missing}"; do
-            cmdSrc=${info%%:*}
-            cmdPackageName=${info#*:}
-
-            installCmd=$(getInstallInstructions "$cmdSrc" "$cmdPackageName")
-            echo "> $installCmd"
-
-            # read -q "REPLY?Do you want to continue? [y/N]: "
-            # echo
-            # if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            #     continue
-            # fi
-
-            eval "$installCmd"
-        done
-
-        echo
-        echo "Installation completed."
-        echo "Reload the shell to see the changes:"
-        echo "> source ~/.zshrc"
     fi
+
+    # -- 1. legacy manager bootstraps (brew/rustup + jiratui) first --
+    for cmd info in "${(@kv)_DEP_RECIPE}"; do
+        _dep_install_candidate "$cmd" "${info%%:*}" "${info#*:}"
+    done
+
+    # -- 2. manifest install-plan.sh, topo order --
+    plan="$(_dep_plan_path)"
+    if [ -f "$plan" ]; then
+        while IFS=$'\t' read -r n m s; do
+            case "$n" in
+                ''|'#'*) continue ;;
+            esac
+            _dep_install_candidate "$n" "$m" "$s"
+        done < "$plan"
+    fi
+
+    echo
+    if [ -z "${DRY_RUN:-}" ]; then
+        echo "Installation completed."
+    fi
+    echo "Reload the shell to see the changes:"
+    echo "> source ~/.zshrc"
 }
 alias im=installMissing
+
+# installMissing helper: install (or DRY_RUN-print) ONE candidate, but only if
+# it's actually in the missing tally AND still absent (a prior install in this
+# same `im` run may have pulled it in as a side effect — e.g. brew installing
+# and thereby satisfying a tool that also appears standalone).
+# usage: _dep_install_candidate name source package
+function _dep_install_candidate {
+    name="$1"
+    src="$2"
+    pkg="$3"
+
+    case " ${_DEP_MISSING_LIST} " in
+        *" $name "*) ;;
+        *) return ;;
+    esac
+
+    # apt tools are packages, not commands, so presence is a dpkg query (mirrors
+    # ifpkg). _DPKG_STATUS is cached once per shell — a package installed earlier
+    # in this same `im` run won't refresh the cache, but re-running `apt-get
+    # install` on an already-present package is a safe idempotent no-op, so that
+    # residual is benign; this only needs to catch "already present at shell start".
+    if [ "$src" = "apt" ]; then
+        _ensure_dpkg_status
+        [[ "${_DPKG_STATUS[$pkg]}" == *"install ok"* ]] && return
+    elif [[ "$name" == /* ]]; then
+        [[ -x "$name" ]] && return
+    else
+        [[ -n "${commands[$name]}" ]] && return
+    fi
+
+    installCmd=$(getInstallInstructions "$src" "$pkg")
+
+    if [ -n "${DRY_RUN:-}" ]; then
+        echo "> $installCmd"
+    else
+        echo "> $installCmd"
+        eval "$installCmd"
+    fi
+}
 
 function updateNeovim {
     install_path=${1:-"$HOME/Programs"}

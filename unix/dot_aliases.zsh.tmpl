@@ -23,6 +23,11 @@ function cache_completion() {
 
 alias dotfiles='cd "$DOTFILES_SRC"'
 
+# Declarative dependency engine — source the apply-time-generated artifact if
+# present. Coexists with the legacy dependencies/*.zsh below during migration
+# (the manifest is near-empty for now, so this wires almost nothing yet).
+[ -f "$HOME/.config/dotfiles/deps.sh" ] && . "$HOME/.config/dotfiles/deps.sh"
+
 debug_measure_start "aliases: brew.zsh"
 . ~/dependencies/brew.zsh
 debug_measure_end

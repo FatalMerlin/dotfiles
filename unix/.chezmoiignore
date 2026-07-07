@@ -2,3 +2,7 @@
 .config/systemd/**
 enable-update-timer.sh
 {{ end }}
+
+# Apply-time-generated artifacts (dependency engine) — never chezmoi-managed.
+.config/dotfiles/deps.sh
+.config/dotfiles/install-plan.sh

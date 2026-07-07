@@ -1,21 +1,11 @@
-features:
-  linux:
-    tmux: true
-    yakuake: false
-linux:
-  work:
-    host: ""
-    opAccount: ""
-    opPluginsScript: ""
-    lokiAddr: ""
-    vaultAddr: ""
-    towerHost: ""
-    towerToken: ""
-    gitlabHostSuffix: ""
-    gitlabHost: ""
-    azureOpenAiKey: ""
-    jira:
-      baseUrl: ""
-      username: ""
-      token: ""
-      accountId: ""
+{
+  features: { work: false, linux: { tmux: true, yakuake: false } },
+  linux: {
+    work: {
+      host: "", opAccount: "", opPluginsScript: "", lokiAddr: "", vaultAddr: "",
+      towerHost: "", towerToken: "", gitlabHost: "",
+      azureOpenAiKey: "",
+      jira: { baseUrl: "", username: "", token: "", accountId: "" }
+    }
+  }
+}

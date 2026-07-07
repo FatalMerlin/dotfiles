@@ -1,0 +1,77 @@
+# prototype/unix/.chezmoidata/packages.yaml — KYAML (flow YAML: braces, quoted
+# strings, cosmetic indent). Authored here; chezmoi generates the runtime
+# artifact at apply-time (run_onchange_resolve-deps). Grouped by manager; the
+# map key IS the tool/command name. Migration fills this from dependencies/*.zsh.
+{
+  packages: {
+    apt: {
+      "socat": { check: "dpkg" },
+      "curl": { check: "dpkg" },
+      "wget": { check: "dpkg" },
+      "build-essential": { check: "dpkg" },
+      "git": { check: "dpkg" },
+      "git-lfs": { check: "dpkg" },
+      "command-not-found": { check: "dpkg" },
+      "column": { package: "bsdextrautils", check: "dpkg" },
+      "make": { check: "dpkg" },
+      "binfmt-support": { gate: "!wsl", check: "dpkg" },
+      "yakuake": { gate: "!wsl", check: "dpkg" },
+      "xclip": { gate: "!wsl", check: "dpkg" },
+      "libssl-dev": { check: "dpkg" },
+      "pkg-config": { check: "dpkg" }
+    },
+    brew: {
+      "jq": {},
+      "http": { source: "httpie" },
+      "argocd": {},
+      "kustomize": {},
+      "yq": {},
+      "op": { source: "1password-cli" },
+      "gh": {},
+      "bun": { source: "oven-sh/bun/bun" },
+      "krr": { source: "robusta-dev/homebrew-krr/krr" },
+      "hcloud": {},
+      "mutagen": { source: "mutagen-io/mutagen/mutagen" },
+      "lazygit": { source: "jesseduffield/lazygit/lazygit" },
+      "rtk": {},
+      "k9s": { source: "derailed/k9s/k9s", env: { K9S_FEATURE_GATE_NODE_SHELL: "true" } },
+      "go": { path: ["$HOME/go/bin"] },
+      "dstask": { aliases: { task: "dstask", t: "dstask" } },
+      "glab": { env: { GITLAB_HOST: { value: "@linux.work.gitlabHost", feature: "work" } } },
+      "fzf": { completion: "fzf --zsh" },
+      "thefuck": { completion: "thefuck --alias" },
+      "kompose": { completion: "kompose completion zsh" },
+      "fleet": { source: "fleet-cli", completion: "fleet completion zsh" },
+      "vkv": { source: "falcosuessgott/tap/vkv", completion: "vkv completion zsh" },
+      "kubectl": { aliases: { k: "kubectl" }, setup: "kubectl_krew" },
+      "helm": { needs: ["kubectl"], completion: "helm completion zsh" },
+      "k3d": { needs: ["kubectl"], completion: "k3d completion zsh" },
+      "fnm": { completion: "fnm env --use-on-cd --shell zsh", setup: "fnm_lts" },
+      "cmake": {}
+    },
+    cargo: {
+      "sccache": { needs: ["libssl-dev", "pkg-config"], env: { RUSTC_WRAPPER: "sccache" }, aliases: { ci: "RUSTC_WRAPPER=sccache cargo install --locked", cb: "RUSTC_WRAPPER=sccache cargo build", cbr: "RUSTC_WRAPPER=sccache cargo build --release" } },
+      "cargo-install-update": { source: "cargo-update", aliases: { ciu: "cargo install-update -a" } },
+      "bat": {},
+      "zoxide": { completion: "zoxide init zsh" },
+      "exa": { aliases: { ls: "exa" } },
+      "dust": { source: "du-dust", aliases: { du: "dust" } },
+      "rg": { source: "ripgrep" },
+      "procs": {},
+      "hyperfine": { aliases: { bench: "hyperfine" } },
+      "broot": { completion: "broot --print-shell-function zsh" },
+      "fd": { source: "fd-find" },
+      "git-prism": { setup: "git_prism_mcp" }
+    },
+    custom: {
+      "nvim": { source: "custom", install: "updateNeovim", aliases: { nano: "nvim" } },
+      "uv": { source: "custom", install: "curl -LsSf https://astral.sh/uv/install.sh | sh", completion: "uv generate-shell-completion zsh" },
+      "uvx": { completion: "uvx --generate-shell-completion zsh" },
+      "az": { source: "custom", install: "curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash" },
+      "dotnet-install.sh": { source: "custom", install: "mkdir -p \"$HOME/.local/bin\" && curl -L https://dot.net/v1/dotnet-install.sh -o \"$HOME/.local/bin/dotnet-install.sh\" && chmod +x \"$HOME/.local/bin/dotnet-install.sh\"" },
+      "ail-cli": { gate: "!wsl", source: "custom", install: "ARCH=\"$( { uname -m 2>/dev/null || arch; } | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')\" && curl -sSLf \"$(get-latest-release.sh TheAssassin/AppImageLauncher \"*${ARCH}.deb\")\" -o /tmp/appimagelauncher.deb && sudo apt install /tmp/appimagelauncher.deb && rm /tmp/appimagelauncher.deb" },
+      "helmfmt": { source: "custom", install: "go install github.com/digitalstudium/helmfmt@latest" },
+      "cache-fix-proxy": { source: "custom", install: "npm install -g claude-code-cache-fix", env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:9801" }, setup: "cache_fix_proxy_service" }
+    }
+  }
+}

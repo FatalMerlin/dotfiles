@@ -1,15 +1,22 @@
-#!/usr/bin/env -S zsh -l
-set -eEuo pipefail
+#!/usr/bin/env -S zsh -leuo pipefail
+# Strict mode (-euo pipefail) applies on direct execution; ignored when sourced.
+. "$HOME/.config/dotfiles/lib/core.sh"
 
 UPDATE_CACHE_FILE="$HOME/.cache/dotfiles_updates.count"
 
+# Bespoke ERR trap (not harness.sh's): the ERROR sentinel written to
+# $UPDATE_CACHE_FILE is load-bearing — the shell-startup drift check and the
+# update-check timer both read it — and harness.sh's ERR trap doesn't write
+# it. Uses $ZSH_DEBUG_CMD (the zsh-correct failing-command variable; this
+# script runs under zsh, so $BASH_COMMAND is never populated).
 on_err() {
     local rc=$?            # must be first
     local line=$1 cmd=$2
-    echo "ERROR at line ${line}: '${cmd}' exited with ${rc}" >&2
+    error "ERROR at line ${line}: '${cmd}' exited with ${rc}"
     echo "ERROR" > "$UPDATE_CACHE_FILE"
+    exit "$rc"
 }
-trap 'on_err "$LINENO" "$BASH_COMMAND"' ERR
+trap 'on_err "$LINENO" "${ZSH_DEBUG_CMD:-?}"' ERR
 
 function check_apt {
     COUNT=$(apt-get -s upgrade 2>/dev/null | awk '/^Inst / {c++} END {print c+0}')
@@ -37,19 +44,19 @@ updates_sources_with_pending_updates=()
 
 for update_checker in "${update_check_functions[@]}"; do
     friendly_name=${update_checker#check_}
-    echo "$friendly_name: checking for updates"
+    info "$friendly_name: checking for updates"
 
     if ! command -v "$friendly_name" >/dev/null; then
-        echo "$friendly_name: not found, skipping"
+        info "$friendly_name: not found, skipping"
         continue
     fi
-    
+
     # invoke function by name
     set +o pipefail
     update_count="$("$update_checker")"
     set -o pipefail
 
-    echo "$friendly_name: $update_count updates available"
+    info "$friendly_name: $update_count updates available"
     [[ "$update_count" -gt 0 ]] || continue
     updates_sources_with_pending_updates+=("$friendly_name")
 done
