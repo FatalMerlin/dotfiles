@@ -11,3 +11,29 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: gitleaks/gitleaks-action@v2
         env: { GITLEAKS_CONFIG: .gitleaks.toml, GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+  # Validate the declarative dependency-manifest data files (`*/.chezmoidata/*.yaml`).
+  # Scoped to the chezmoidata dirs rather than all tracked YAML: kyaml-lint's own
+  # workflow-skip glob (`*/.github/workflows/*.yml`) does not match this repo's
+  # root-level `.github/workflows/*` (no leading path segment), so a repo-wide
+  # `git ls-files '*.yaml'` would wrongly lint the workflow files. Scoping here is
+  # both what we want (only data files must be flow-style KYAML) and robust.
+  manifest-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+      - name: Lint chezmoidata YAML for KYAML (flow-style) compliance
+        run: |
+          files=$(git ls-files '*/.chezmoidata/*.yaml')
+          if [ -n "$files" ]; then
+            bash tests/kyaml-lint.sh $files
+          fi
+      - name: "Lint manifest feature references (every feature: must exist under .features)"
+        run: |
+          files=$(git ls-files '*/.chezmoidata/packages.yaml')
+          if [ -n "$files" ]; then
+            bash tests/feature-lint.sh $files
+          fi
