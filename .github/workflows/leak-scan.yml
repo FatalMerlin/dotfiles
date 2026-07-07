@@ -1,5 +1,8 @@
 name: leak-scan
 on: [push, pull_request]
+permissions:
+  contents: read
+  pull-requests: read
 jobs:
   gitleaks:
     runs-on: ubuntu-latest
