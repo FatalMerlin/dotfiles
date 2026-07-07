@@ -1,7 +1,12 @@
 BREW=/home/linuxbrew/.linuxbrew/bin/brew
 
+# The recipe evals `brew shellenv` right after install, for the same reason
+# cargo.zsh sources ~/.cargo/env: `im` runs this recipe in the CURRENT shell, but a
+# freshly-installed brew only lands on PATH via the startup block below on the NEXT
+# shell. Without this, the same `im` run's brew-manager tools (install-plan step 2)
+# die with `command not found: brew`. Idempotent no-op when brew was already present.
 if ifalias brew brew custom '/bin/bash -c \
-    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' \
+    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && eval "$(PATH=/usr/bin /home/linuxbrew/.linuxbrew/bin/brew shellenv)"' \
     /home/linuxbrew/.linuxbrew/bin/brew; then
 
     debug_measure_start "brew: shellenv"

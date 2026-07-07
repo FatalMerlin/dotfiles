@@ -71,7 +71,7 @@
       "dotnet-install.sh": { source: "custom", install: "mkdir -p \"$HOME/.local/bin\" && curl -L https://dot.net/v1/dotnet-install.sh -o \"$HOME/.local/bin/dotnet-install.sh\" && chmod +x \"$HOME/.local/bin/dotnet-install.sh\"" },
       "ail-cli": { gate: "!wsl", source: "custom", install: "ARCH=\"$( { uname -m 2>/dev/null || arch; } | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')\" && curl -sSLf \"$(get-latest-release.sh TheAssassin/AppImageLauncher \"*${ARCH}.deb\")\" -o /tmp/appimagelauncher.deb && sudo apt install /tmp/appimagelauncher.deb && rm /tmp/appimagelauncher.deb" },
       "helmfmt": { source: "custom", install: "go install github.com/digitalstudium/helmfmt@latest" },
-      "cache-fix-proxy": { source: "custom", install: "npm install -g claude-code-cache-fix", env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:9801" }, setup: "cache_fix_proxy_service" }
+      "cache-fix-proxy": { gate: "!wsl", source: "custom", install: "npm install -g claude-code-cache-fix", env: { ANTHROPIC_BASE_URL: "http://127.0.0.1:9801" }, setup: "cache_fix_proxy_service" }
     }
   }
 }
