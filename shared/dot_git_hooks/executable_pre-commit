@@ -1,0 +1,53 @@
+#!/usr/bin/env sh
+# ~/.git_hooks/pre-commit — GLOBAL secret guard for EVERY repo on this machine.
+#
+# Deployed by chezmoi from prototype/shared/dot_git_hooks/; ~/.gitconfig sets
+# core.hooksPath = ~/.git_hooks, so this runs before every commit in every repo
+# that doesn't override core.hooksPath. It carries only the UNIVERSAL guards —
+# gitleaks + a private denylist. Repo-specific gates (this repo's KYAML /
+# feature-lint) intentionally live in that repo's OWN hook, not here, so this
+# copy is safe to run against arbitrary repositories.
+#
+# Why local (not just CI): CI gitleaks runs post-push — by then a leaked secret
+# has already left the machine. This blocks the commit before it is ever created.
+set -e
+
+# 1) gitleaks — generic secrets/keys. Config resolved leniently: a repo
+#    .gitleaks.toml (root, then prototype/) if present, else gitleaks' built-in
+#    default rules — so it works in ANY repo, config or not.
+if command -v gitleaks >/dev/null 2>&1; then
+  _gl_root="$(git rev-parse --show-toplevel)"
+  if   [ -f "$_gl_root/.gitleaks.toml" ];           then _gl_cfg="-c $_gl_root/.gitleaks.toml"
+  elif [ -f "$_gl_root/prototype/.gitleaks.toml" ]; then _gl_cfg="-c $_gl_root/prototype/.gitleaks.toml"
+  else _gl_cfg=""; fi
+  # shellcheck disable=SC2086  # intentional word-split of the optional -c <path>
+  if ! gitleaks git --staged --redact $_gl_cfg .; then
+    echo "pre-commit: gitleaks found a secret — commit blocked." >&2; exit 1
+  fi
+else
+  echo "pre-commit: WARNING gitleaks not installed — skipping secret scan." >&2
+fi
+
+# 2) custom denylist — known-private strings, sourced from OUTSIDE any repo
+#    (a file in the private data channel; DOTFILES_DENYLIST overrides the path).
+#    Skipped when the file is absent, so it never blocks on a machine without one.
+DL="${DOTFILES_DENYLIST:-$HOME/.config/dotfiles/denylist.txt}"
+if [ -f "$DL" ]; then
+  staged_list="$(mktemp)"
+  git diff --cached --name-only > "$staged_list"
+  # Read via redirection (NOT a pipe) so `exit 1` exits the hook, and `read -r`
+  # preserves filenames containing spaces.
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    while IFS= read -r pat; do
+      [ -n "$pat" ] || continue
+      if grep -qF -- "$pat" "$f"; then
+        echo "pre-commit: denylisted string in $f — commit blocked." >&2
+        rm -f "$staged_list"; exit 1
+      fi
+    done < "$DL"
+  done < "$staged_list"
+  rm -f "$staged_list"
+fi
+
+exit 0
