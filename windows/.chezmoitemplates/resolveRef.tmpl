@@ -1,0 +1,12 @@
+{{/* prototype/unix/.chezmoitemplates/resolveRef.tmpl
+     Resolve an @-ref against chezmoi data. Call via:
+       {{ includeTemplate "resolveRef.tmpl" (dict "ref" "@a.b.c" "data" $) }}
+     "@a.b.c" -> value at .a.b.c in the given data tree; a non-@ string passes
+     through unchanged. Body-only (NOT a {{ define }}) so chezmoi's
+     includeTemplate loads it during real apply — a define'd sub-template is
+     invisible to run_onchange templates via {{ template }}. */}}
+{{- if hasPrefix "@" .ref -}}
+{{-   $cur := .data -}}
+{{-   range splitList "." (trimPrefix "@" .ref) -}}{{- $cur = index $cur . -}}{{- end -}}
+{{-   $cur -}}
+{{- else -}}{{- .ref -}}{{- end -}}
