@@ -1,14 +1,8 @@
-features:
-  windows:
-    autohotkey: true
-    micSwitcher: true
-windows:
-  thinlinc:
-    host: ""
-    user: ""
-  onepassword:
-    account: ""
-    vpnItem: ""
-  vpn:
-    connectTitle: ""
-    credentialTitle: ""
+{
+  features: { windows: { autohotkey: true, micSwitcher: true } },
+  windows: {
+    thinlinc: { host: "", user: "" },
+    onepassword: { account: "", vpnItem: "" },
+    vpn: { connectTitle: "", credentialTitle: "" }
+  }
+}

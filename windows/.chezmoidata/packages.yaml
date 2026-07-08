@@ -1,0 +1,32 @@
+# prototype/windows/.chezmoidata/packages.yaml — KYAML (flow YAML: braces, quoted
+# strings, cosmetic indent). Windows mirror of the unix manifest; chezmoi generates
+# the runtime artifact at apply-time (run_onchange_resolve-deps.ps1). Grouped by
+# manager (winget/cargo/npm/custom); the map key IS the tool/command name. This is
+# the FULL MIGRATION of the imperative dependencies/*.ps1 declarations — every real
+# entry exercising the resolver patterns (id/source, aliases, env, needs/topo,
+# setup hook, completion).
+{
+  packages: {
+    winget: {
+      "oh-my-posh": { id: "JanDeDobbeleer.OhMyPosh" },
+      "op": { id: "AgileBits.1Password.CLI", completion: "op completion powershell" },
+      "zoxide": { id: "ajeetdsouza.zoxide", completion: "zoxide init powershell --cmd cd" },
+      "gh": { id: "GitHub.cli", completion: "gh completion -s powershell" },
+      "kubectl": { id: "Kubernetes.kubectl", completion: "kubectl completion powershell", aliases: { k: "kubectl", ktx: "kubectl config use-context" } },
+      "code": { id: "Microsoft.VisualStudioCode", env: { KUBE_EDITOR: "code --wait" } },
+      "fzf": { id: "junegunn.fzf" },
+      "magick": { id: "ImageMagick.ImageMagick" },
+      "ffmpeg": { id: "BtbN.FFmpeg.LGPL.Shared" },
+      "sccache": { id: "Mozilla.sccache", env: { RUSTC_WRAPPER: "sccache" } },
+      "helm": { id: "Helm.Helm", needs: ["kubectl"] },
+      "python": { id: "Python.Python.3.14" }
+    },
+    cargo: {
+      "git-prism": { setup: "git_prism_mcp" }
+    },
+    npm: {
+      "cache-fix-proxy": { source: "claude-code-cache-fix", setup: "cache_fix_proxy_wrapper" }
+    },
+    custom: {}
+  }
+}

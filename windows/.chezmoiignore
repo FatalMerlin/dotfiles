@@ -4,3 +4,11 @@ autohotkey/**
 {{ if not .features.windows.micSwitcher }}
 mic-switcher.ps1
 {{ end }}
+
+# Dev-only tests + their harness — never deployed into $HOME.
+tests/**
+
+# Apply-time-generated artifacts (dependency engine) — never chezmoi-managed;
+# the run_onchange resolver writes them into ~/.config/dotfiles at apply time.
+.config/dotfiles/deps.ps1
+.config/dotfiles/install-plan.ps1

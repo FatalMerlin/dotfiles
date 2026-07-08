@@ -49,8 +49,6 @@ function dfa { chezmoi apply -S "$DOTFILES_SRC\shared"; chezmoi apply -S "$DOTFI
 function dfu { git -C "$DOTFILES_SRC" pull --ff-only; dfa }                                          # dotfiles update
 
 #region Autocompletes
-op completion powershell | Out-String | Invoke-Expression
-
 # winget autocomplete
 # See: https://learn.microsoft.com/en-us/windows/package-manager/winget/tab-completion
 # Reconstructs from CommandElements (not ToString) so alias-injected CommandAst nodes work correctly,
@@ -113,10 +111,6 @@ function sc {
 function fal { 
     $query = "$args"
     Get-Alias | Where-Object { $_.Definition -like "*$query*" -or $_.Name -like "*$query*" }
-}
-
-if (Get-Command "sccache" -ErrorAction SilentlyContinue) {
-    $env:RUSTC_WRAPPER = "sccache"
 }
 
 function rcon {
@@ -241,17 +235,18 @@ if ($PSVersionTable.PSVersion -lt [Version]"7.6") {
 EnsurePSResource -Name Microsoft.WinGet.Client
 EnsurePSResource -Name Microsoft.WinGet.CommandNotFound
 
-#region Dependency management — mirrors linux/dependencies/
-# The dependencies/ directory is symlinked into $HOME by install.ps1.
-$DependenciesDir = "$HOME/dependencies"
-if (Test-Path $DependenciesDir) {
-    . "$DependenciesDir/_functions.ps1"
-    . "$DependenciesDir/winget.ps1"
-    . "$DependenciesDir/cargo.ps1"
-    . "$DependenciesDir/npm.ps1"
-    . "$DependenciesDir/custom.ps1"
-    reportMissing
-}
+#region Dependency management — declarative manifest engine
+# run_onchange_resolve-deps.ps1 renders .chezmoidata/packages.yaml into
+# ~/.config/dotfiles/deps.ps1 at apply-time. Dot-source it at TOP LEVEL so its
+# env / alias / PATH / completion wiring lands in the global session scope (a
+# module function could not reach global). Then load the provisioner (im/lm),
+# register the rustup manager bootstrap recipe (cargo isn't a manifest tool),
+# and fire a single missing-report covering deps.ps1 guards + the recipe.
+$DepsArtifact = "$HOME/.config/dotfiles/deps.ps1"
+if (Test-Path $DepsArtifact) { . $DepsArtifact }
+Import-Module "$HOME/Documents/PowerShell/dotfiles/lib/Provisioner.psm1" -Force
+Add-DepRecipe cargo winget Rustlang.Rustup
+dep_report_missing
 #endregion
 
 function grep {
@@ -307,14 +302,6 @@ function rmrf {
 function tl {
     & "C:\Program Files\ThinLinc client\tlclient.exe" --user {{ .windows.thinlinc.user }} --password $(op item get {{ .windows.onepassword.vpnItem }} --account "{{ .windows.onepassword.account }}" --fields password --reveal) {{ .windows.thinlinc.host }} 
 }
-
-# Zoxide Setup - https://github.com/ajeetdsouza/zoxide?tab=readme-ov-file#installation
-# Add this to the end of your config file (find it by running echo $profile in PowerShell):
-Invoke-Expression (& { (zoxide init powershell | Out-String) })
-Remove-Alias cd
-Set-Alias cd z
-
-Invoke-Expression -Command $(gh completion -s powershell | Out-String)
 
 function mkcd {
     param (
@@ -463,9 +450,3 @@ function which {
     $cmd = Get-Command $command -ErrorAction SilentlyContinue
     return $cmd.Definition
 }
-
-$env:KUBE_EDITOR = "code --wait"
-
-kubectl completion powershell | Out-String | Invoke-Expression
-New-CommandAlias -Name k   -Command kubectl
-New-CommandAlias -Name ktx -Command kubectl -AliasArgs config, use-context
