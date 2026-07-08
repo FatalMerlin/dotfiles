@@ -19,7 +19,8 @@
       "ffmpeg": { id: "BtbN.FFmpeg.LGPL.Shared" },
       "sccache": { id: "Mozilla.sccache", env: { RUSTC_WRAPPER: "sccache" } },
       "helm": { id: "Helm.Helm", needs: ["kubectl"] },
-      "python": { id: "Python.Python.3.14" }
+      "python": { id: "Python.Python.3.14" },
+      "yq": { id: "MikeFarah.yq" }
     },
     cargo: {
       "git-prism": { setup: "git_prism_mcp" }
