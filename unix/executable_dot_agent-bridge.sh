@@ -14,17 +14,28 @@
 
 set -uo pipefail
 
+# core.sh gives us info/warn/error logging. This file runs at shell startup and
+# must stay robust even if the lib is somehow absent, so define plain-echo
+# fallbacks FIRST, then source core.sh which overrides them when present.
+# (Defining first — rather than a `command -v info` guard AFTER — avoids the
+# collision where GNU texinfo's /usr/bin/info makes the guard skip the shim and
+# route logging into the texinfo reader when core.sh is absent.)
+info()  { echo "$*"; }
+warn()  { echo "$*" >&2; }
+error() { echo "$*" >&2; }
+[ -f "$HOME/.config/dotfiles/lib/core.sh" ] && . "$HOME/.config/dotfiles/lib/core.sh"
+
 if ! command -v socat >/dev/null 2>&1; then
-    echo "socat is required for ssh forwarding but not found in PATH. Please install it and try again."
-    echo "On Debian/Ubuntu, you can install it with:"
-    echo "> sudo apt install socat"
+    error "socat is required for ssh forwarding but not found in PATH. Please install it and try again."
+    error "On Debian/Ubuntu, you can install it with:"
+    error "> sudo apt install socat"
     exit 1
 fi
 
 if ! command -v npiperelay.exe >/dev/null 2>&1; then
-    echo "npiperelay.exe is required for ssh forwarding but not found in PATH. Please install it and try again."
-    echo "You can install it with winget on Windows:"
-    echo "> winget install -e --id jstarks.npiperelay"
+    error "npiperelay.exe is required for ssh forwarding but not found in PATH. Please install it and try again."
+    error "You can install it with winget on Windows:"
+    error "> winget install -e --id jstarks.npiperelay"
     exit 1
 fi
 
@@ -44,20 +55,20 @@ ALREADY_RUNNING=$(
 )
 if [[ $ALREADY_RUNNING != "0" ]]; then
     if [[ -S $SSH_AUTH_SOCK ]]; then
-        echo "Killing dangling socat..."
+        warn "Killing dangling socat..."
         ps -auxww | grep "[n]piperelay.exe -ei -s //./pipe/openssh-ssh-agent" | awk '{ print $2 }' | xargs --no-run-if-empty kill -9
         # not expecting the socket to exist as the forwarding command isn't running (http://www.tldp.org/LDP/abs/html/fto.html)
         if [[ -S $SSH_AUTH_SOCK ]]; then
-            echo "Removing previous socket..."
+            warn "Removing previous socket..."
             rm "$SSH_AUTH_SOCK"
         fi
     fi
-    echo "Starting SSH-Agent relay..."
+    info "Starting SSH-Agent relay..."
     # setsid to force new session to keep running
     # set socat to listen on $SSH_AUTH_SOCK and forward to npiperelay which then forwards to openssh-ssh-agent on windows
     (setsid socat UNIX-LISTEN:"$SSH_AUTH_SOCK",fork EXEC:"npiperelay.exe -ei -s //./pipe/openssh-ssh-agent",nofork &) >/dev/null 2>&1
 else
-    echo "ssh-agent OK"
+    info "ssh-agent OK"
 fi
 
 set +uo pipefail

@@ -137,6 +137,11 @@ export XDG_CONFIG_HOME=$HOME/.config
 export PATH=$HOME/.local/bin:/usr/local/bin:$PATH
 export P10K_DIR="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
 
+# Core dependency-engine lib (log/have/ifpath/cache_completion/missing-report).
+# Sourced early so its primitives are available to the rest of startup; deps.sh
+# re-sources it harmlessly (function defs only).
+[ -f "$HOME/.config/dotfiles/lib/core.sh" ] && . "$HOME/.config/dotfiles/lib/core.sh"
+
 if [ ! -d "$ZSH" ]; then
   debug_measure_start "Installing Oh My Zsh"
   export KEEP_ZSHRC="yes"
@@ -305,8 +310,14 @@ debug_measure_start "Sourcing aliases"
 [[ ! -f ~/.aliases.zsh ]] || source ~/.aliases.zsh
 debug_measure_end
 # always on end
+# Single unified report, fired once here after ALL sourcing — manifest
+# deps.sh guards (sourced via .aliases.zsh above) AND the legacy
+# dependencies/*.zsh bootstraps (brew/rustup + jiratui, also sourced via
+# .aliases.zsh, AFTER deps.sh) both feed the same core.sh tally via
+# dep_mark_missing, so this one call covers both. (core.sh itself is sourced
+# earlier, at the top of this file, so dep_report_missing is defined by now.)
 debug_measure_start "Reporting missing dependencies"
-reportMissing
+dep_report_missing
 debug_measure_end
 
 # export MANPATH="/usr/local/man:$MANPATH"
