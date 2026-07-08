@@ -1,5 +1,8 @@
 name: leak-scan
 on: [push, pull_request]
+permissions:
+  contents: read
+  pull-requests: read
 jobs:
   gitleaks:
     runs-on: ubuntu-latest
@@ -7,4 +10,4 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: gitleaks/gitleaks-action@v2
-        env: { GITLEAKS_CONFIG: .gitleaks.toml }
+        env: { GITLEAKS_CONFIG: .gitleaks.toml, GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
