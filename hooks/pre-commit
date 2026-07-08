@@ -27,4 +27,51 @@ if [ -f "$DL" ]; then
   done < "$staged_list"
   rm -f "$staged_list"
 fi
+# 3) KYAML gate — lint staged *.yaml/*.yml data files (flow-style only).
+#    Excludes .github/workflows/* (the one allowed block-YAML exception). We
+#    filter it here rather than rely on kyaml-lint.sh's own skip: that skip is
+#    globbed `*/.github/workflows/*` and does NOT match this repo's root-level
+#    `.github/workflows/*` (no leading path segment), so the exclude must happen
+#    in the caller. Mirrors the CI's scoping in .github/workflows/leak-scan.yml.
+yaml_list="$(mktemp)"
+git diff --cached --name-only --diff-filter=ACM | grep -E '\.ya?ml$' | grep -vE '(^|/)\.github/workflows/' > "$yaml_list" || true
+if [ -s "$yaml_list" ]; then
+  # Read staged filenames via redirection (NOT a pipe) so `set -e`/`exit 1`
+  # exits the hook, and `read -r` preserves filenames containing spaces.
+  set -- ""
+  shift
+  while IFS= read -r f; do
+    set -- "$@" "$f"
+  done < "$yaml_list"
+  rm -f "$yaml_list"
+  if [ "$#" -gt 0 ]; then
+    if ! bash "$(git rev-parse --show-toplevel)/tests/kyaml-lint.sh" "$@"; then
+      echo "pre-commit: KYAML lint failed (use flow style, no block YAML) — commit blocked." >&2
+      exit 1
+    fi
+  fi
+else
+  rm -f "$yaml_list"
+fi
+# 4) feature-lint — every dependency-manifest `feature:` must exist under
+#    `.features` in the sibling defaults.yaml. A typo (e.g. `feature: "wrok"`)
+#    otherwise fails SILENT-CLOSED at apply (the gated wiring is just omitted).
+feat_list="$(mktemp)"
+git diff --cached --name-only --diff-filter=ACM | grep -E '(^|/)\.chezmoidata/packages\.yaml$' > "$feat_list" || true
+if [ -s "$feat_list" ]; then
+  set -- ""
+  shift
+  while IFS= read -r f; do
+    set -- "$@" "$f"
+  done < "$feat_list"
+  rm -f "$feat_list"
+  if [ "$#" -gt 0 ]; then
+    if ! bash "$(git rev-parse --show-toplevel)/tests/feature-lint.sh" "$@"; then
+      echo "pre-commit: feature-lint failed (manifest references an undefined feature) — commit blocked." >&2
+      exit 1
+    fi
+  fi
+else
+  rm -f "$feat_list"
+fi
 exit 0
