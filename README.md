@@ -53,6 +53,30 @@ in the chezmoi source repository. It blocks commits that contain secrets or pers
 identifying data. Install gitleaks before committing changes to ensure the guardrail is
 active.
 
+## Dependency management
+
+Tools are **declared, not scripted**. Each platform has a KYAML manifest
+(`<platform>/.chezmoidata/packages.yaml`) grouped by package manager, where the map key is
+the tool/command name:
+
+```
+{ packages: { winget: { "kubectl": { id: "Kubernetes.kubectl", aliases: { k: "kubectl" } } } } }
+```
+
+At `chezmoi apply` time a resolver (`run_onchange_resolve-deps.*`) renders the manifest into
+a flat, self-guarded startup artifact (`~/.config/dotfiles/deps.{sh,ps1}`) plus a
+topologically-sorted install plan. The interactive shell / PowerShell profile simply sources
+the artifact — every snippet self-guards on the tool being present, so a missing tool
+degrades gracefully instead of erroring. A running tally powers a "N missing" report;
+`im` / `lm` install / list the missing set.
+
+Per-tool wiring is declarative: `env`, `path`, `aliases`, `completion` (cached), `check`
+(presence detection), `setup` (bespoke hooks), `gate` (host/OS skip), and `needs` (install
+order). One schema drives both the POSIX (`core.sh`) and PowerShell (`Core.psm1`) engines.
+
+**KYAML only:** data files use flow-style YAML (braces, quoted strings, no block
+constructs) — enforced by a pre-commit + CI lint alongside the leak guardrail.
+
 ## Personal data
 
 This repository contains no personal data, hostnames, work-specific identifiers, or private
