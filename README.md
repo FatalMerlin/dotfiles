@@ -29,8 +29,11 @@ Or clone first and run directly:
 The script:
 1. Installs `chezmoi` via winget if not already present.
 2. Installs `gitleaks` via winget (used by the pre-commit guardrail — see below).
-3. Runs `chezmoi init --apply` to clone and apply the dotfiles.
-4. Sets `core.hooksPath hooks` in the chezmoi source repo so the guardrail is active immediately.
+3. Clones the dotfiles repo directly with `git clone` (chezmoi is used only as the apply-engine,
+   not to manage the source clone).
+4. Sets `core.hooksPath hooks` in the cloned repo so the guardrail is active immediately.
+5. Runs `chezmoi apply -S <path>/shared` followed by `chezmoi apply -S <path>/windows` — two
+   scoped applies against the three-source-root layout, not a single `chezmoi init --apply`.
 
 ### Linux / macOS (sh)
 
@@ -43,8 +46,11 @@ sh bootstrap.sh https://github.com/your-fork/dotfiles.git
 The script:
 1. Installs `chezmoi` to `~/.local/bin` via the official installer if not already present.
 2. Notes if `gitleaks` is missing (install separately for the pre-commit guardrail).
-3. Runs `chezmoi init --apply` to clone and apply the dotfiles.
-4. Sets `core.hooksPath hooks` in the chezmoi source repo.
+3. Clones the dotfiles repo directly with `git clone` (chezmoi is used only as the apply-engine,
+   not to manage the source clone).
+4. Sets `core.hooksPath hooks` in the cloned repo.
+5. Runs `chezmoi apply -S <path>/shared` followed by `chezmoi apply -S <path>/unix` — two scoped
+   applies against the three-source-root layout, not a single `chezmoi init --apply`.
 
 ## Leak guardrail
 
