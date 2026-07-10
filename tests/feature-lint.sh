@@ -16,6 +16,13 @@
 # value (`false`/`true`) — so `null` (and only `null`) means "not defined".
 
 rc=0
+
+# Resolve yq (Windows git hooks often run with a reduced PATH omitting the
+# winget Links dir; prefer PATH, then that dir; fail-closed with a hint).
+if command -v yq >/dev/null 2>&1; then YQ=yq
+elif [ -x "$HOME/AppData/Local/Microsoft/WinGet/Links/yq.exe" ]; then YQ="$HOME/AppData/Local/Microsoft/WinGet/Links/yq.exe"
+else echo "feature-lint: yq not found — install it (winget install MikeFarah.yq / brew install yq / apt install yq)" >&2; exit 2; fi
+
 for pkg in "$@"; do
   if [ ! -f "$pkg" ]; then
     echo "feature-lint: $pkg — not a regular file"; rc=1; continue
@@ -29,11 +36,11 @@ for pkg in "$@"; do
   # `{ value, feature }`); recursive descent finds them regardless of nesting.
   while IFS= read -r feat; do
     [ -n "$feat" ] || continue
-    if [ "$(yq ".features.$feat" "$defaults" 2>/dev/null)" = "null" ]; then
+    if [ "$("$YQ" ".features.$feat" "$defaults" 2>/dev/null)" = "null" ]; then
       echo "feature-lint: $pkg references feature '$feat' not defined under .features in $defaults"
       rc=1
     fi
-  done < <(yq '[.. | select(tag == "!!map" and has("feature")) | .feature] | .[]' "$pkg" 2>/dev/null | sort -u)
+  done < <("$YQ" '[.. | select(tag == "!!map" and has("feature")) | .feature] | .[]' "$pkg" 2>/dev/null | sort -u)
 done
 
 exit $rc
