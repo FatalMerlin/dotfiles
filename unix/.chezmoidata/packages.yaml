@@ -51,7 +51,7 @@
     },
     cargo: {
       "sccache": { needs: ["libssl-dev", "pkg-config"], env: { RUSTC_WRAPPER: "sccache" }, aliases: { ci: "RUSTC_WRAPPER=sccache cargo install --locked", cb: "RUSTC_WRAPPER=sccache cargo build", cbr: "RUSTC_WRAPPER=sccache cargo build --release" } },
-      "cargo-install-update": { source: "cargo-update", aliases: { ciu: "cargo install-update -a" } },
+      "cargo-install-update": { source: "cargo-update", needs: ["libssl-dev", "pkg-config"], aliases: { ciu: "cargo install-update -a" } },
       "bat": {},
       "zoxide": { completion: "zoxide init zsh" },
       "exa": { aliases: { ls: "exa" } },
