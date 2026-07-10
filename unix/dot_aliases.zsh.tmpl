@@ -3,7 +3,11 @@ alias sudosh='sudo -E ZDOTDIR=$HOME/.zsh-root ZSH_DISABLE_COMPFIX=true zsh'
 
 # chezmoi is the apply-engine only; the repo holds three sources (shared/unix/windows).
 export DOTFILES_SRC="$HOME/.local/share/chezmoi"
-dfa () { chezmoi apply -S "$DOTFILES_SRC/shared" && chezmoi apply -S "$DOTFILES_SRC/unix"; }   # dotfiles apply
+# Private, personal-audience source (dotfiles-private repo's `personal/` root — SSH host
+# inventory, watch-edited via the nscp/cscp aliases below). Not bootstrapped automatically
+# yet; clone it yourself per that repo's README, at this default path.
+export DOTFILES_PRIV_SRC="$HOME/.local/share/dotfiles-private"
+dfa () { chezmoi apply -S "$DOTFILES_SRC/shared" && chezmoi apply -S "$DOTFILES_SRC/unix" && chezmoi apply -S "$DOTFILES_PRIV_SRC/personal"; }   # dotfiles apply
 dfu () { git -C "$DOTFILES_SRC" pull --ff-only && dfa; }                                        # dotfiles update
 
 # Cache the output of a completion/alias-generating command.
@@ -89,6 +93,14 @@ alias szf="source ~/.functions.zsh"
 
 alias nsc='EDITOR=nano chezmoi edit --watch -S "$DOTFILES_SRC/shared" ~/.ssh/config'
 alias csc='chezmoi edit --watch -S "$DOTFILES_SRC/shared" ~/.ssh/config'
+
+alias nscp='EDITOR=nano chezmoi edit --watch -S "$DOTFILES_PRIV_SRC/personal" ~/.ssh/config.d/personal.conf'
+alias cscp='chezmoi edit --watch -S "$DOTFILES_PRIV_SRC/personal" ~/.ssh/config.d/personal.conf'
+
+# Re-adopt ~/.ssh/config.d/personal.conf into the personal source after editing the live
+# file directly (rather than through cscp/nscp) — pulls its current on-disk content back
+# into the chezmoi source state.
+alias sshadopt='chezmoi add -S "$DOTFILES_PRIV_SRC/personal" ~/.ssh/config.d/personal.conf'
 
 alias nkc="nano ~/.kube/config"
 alias ckc="code ~/.kube/config"
