@@ -45,7 +45,11 @@ function EnsurePSResource {
 
 # chezmoi is the apply-engine only; the repo holds three sources (shared/unix/windows).
 $DOTFILES_SRC = "$HOME\.local\share\chezmoi"
-function dfa { chezmoi apply -S "$DOTFILES_SRC\shared"; chezmoi apply -S "$DOTFILES_SRC\windows" }   # dotfiles apply
+# Private, personal-audience source (dotfiles-private repo's `personal/` root — SSH host
+# inventory, watch-edited via the nscp/cscp functions below). Not bootstrapped automatically
+# yet; clone it yourself per that repo's README, at this default path.
+$DOTFILES_PRIV_SRC = "$HOME\.local\share\dotfiles-private"
+function dfa { chezmoi apply -S "$DOTFILES_SRC\shared"; chezmoi apply -S "$DOTFILES_SRC\windows"; chezmoi apply -S "$DOTFILES_PRIV_SRC\personal" }   # dotfiles apply
 function dfu { git -C "$DOTFILES_SRC" pull --ff-only; dfa }                                          # dotfiles update
 
 #region Autocompletes
@@ -102,10 +106,28 @@ function cc { code $PROFILE }
 # PowerShell cannot source the $PROFILE file from a function...
 # So we have to make it complicated...
 # Source: https://stackoverflow.com/a/75528658/4161937
-function sc { 
+function sc {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.SendKeys]::SendWait(". `$PROFILE; clear{ENTER}")
 }
+
+# (n)ano (s)sh (c)onfig (p)ersonal — watch-edit the personal SSH host inventory, applying
+# on every save. $env:EDITOR is scoped to this call only (mirrors the unix alias's
+# one-shot `EDITOR=nano cmd` prefix instead of flipping the session's default editor).
+function nscp {
+    $prevEditor = $env:EDITOR
+    $env:EDITOR = "nano"
+    try { chezmoi edit --watch -S "$DOTFILES_PRIV_SRC\personal" "$HOME\.ssh\config.d\personal.conf" }
+    finally { $env:EDITOR = $prevEditor }
+}
+
+# (c)hezmoi (s)sh (c)onfig (p)ersonal — same, with $EDITOR left at its default
+function cscp { chezmoi edit --watch -S "$DOTFILES_PRIV_SRC\personal" "$HOME\.ssh\config.d\personal.conf" }
+
+# Re-adopt ~/.ssh/config.d/personal.conf into the personal source after editing the live
+# file directly (rather than through cscp/nscp) — pulls its current on-disk content back
+# into the chezmoi source state.
+function sshadopt { chezmoi add -S "$DOTFILES_PRIV_SRC\personal" "$HOME\.ssh\config.d\personal.conf" }
 
 # (f)ind (al)iases
 function fal { 
