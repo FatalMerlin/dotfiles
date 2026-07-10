@@ -16,6 +16,16 @@
 
 rc=0
 
+# Resolve yq. Windows git hooks frequently run with a reduced PATH that omits
+# ~/AppData/Local/Microsoft/WinGet/Links (where `winget install MikeFarah.yq`
+# lands the shim), which used to make this lint fail-closed with a misleading
+# "not valid YAML". Prefer PATH, then that winget Links dir; fail with a clear
+# install hint if genuinely absent (fail-closed — a lint should never silently
+# pass unchecked YAML).
+if command -v yq >/dev/null 2>&1; then YQ=yq
+elif [ -x "$HOME/AppData/Local/Microsoft/WinGet/Links/yq.exe" ]; then YQ="$HOME/AppData/Local/Microsoft/WinGet/Links/yq.exe"
+else echo "kyaml: yq not found — install it (winget install MikeFarah.yq / brew install yq / apt install yq)" >&2; exit 2; fi
+
 # strip_strings: replaces double-quoted spans with a sentinel `_` (not a blank)
 # so `:`/`-`/`,` inside string values can't be mistaken for block/flow syntax
 # markers. Substituting rather than blanking matters for empty-string values:
@@ -36,7 +46,7 @@ for f in "$@"; do
   fi
 
   # (1) must parse as YAML
-  if ! yq -e '.' "$f" >/dev/null 2>&1; then
+  if ! "$YQ" -e '.' "$f" >/dev/null 2>&1; then
     echo "kyaml: $f — not valid YAML"; rc=1; continue
   fi
 
