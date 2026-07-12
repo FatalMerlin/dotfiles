@@ -1,5 +1,5 @@
 {
-  features: { work: false, linux: { tmux: true, yakuake: false } },
+  features: { work: false, linux: { tmux: true, yakuake: false, sudoSshAgentPam: false } },
   linux: {
     work: {
       host: "", opAccount: "", opPluginsScript: "", lokiAddr: "", vaultAddr: "",

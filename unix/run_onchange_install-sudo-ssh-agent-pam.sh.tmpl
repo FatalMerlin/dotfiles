@@ -1,0 +1,156 @@
+#!/usr/bin/env -S bash -eEuo pipefail
+{{/* unix/run_onchange_install-sudo-ssh-agent-pam.sh.tmpl — apply-time installer/
+     converger for password-less `sudo` authorized by the unlocked 1Password SSH
+     agent, via PAM's pam_ssh_agent_auth module (Debian package
+     libpam-ssh-agent-auth). Born from ARK-338 decision D0.2 ("sudo mode"), which
+     grew into a fleet-wide feature: authorize sudo the same way git commit
+     signing already is — a live SSH-agent signature — instead of (or in
+     addition to, since the PAM line is `sufficient` not `required`) a Unix
+     password. Full design/validation: D:\Projects\SUDO-SSH-AGENT-PLAN.md.
+
+     Gate: .features.linux.sudoSshAgentPam (default false — unlike the inert
+     Windows hardware-fix flags, a PAM/sudoers change is a security-relevant
+     mutation of /etc, so a public-repo forker must NOT inherit it; opt-in
+     only, flipped true from the private data overlay). Scoped to
+     .chezmoi.os == "linux" only (this unix/ source root also serves macOS —
+     see bootstrap.sh — but pam_ssh_agent_auth is Linux-PAM only, macOS SIP
+     protects /etc/pam.d, and macOS sudo already has native Touch-ID/1Password
+     integration via pam_tid.so).
+
+     Key: a DEDICATED identities.personal.sudoKey (NOT the git signingKey) —
+     the sudo trust can be revoked/rotated independently of git-commit-signing
+     trust, keeping the "grants root" blast radius separate from "grants git
+     identity". `key::`-prefix stripped exactly as
+     shared/dot_config/git/allowed_signers.tmpl does for signingKey.
+
+     Shape mirrors the Windows privileged run_onchange_ registrars
+     (windows/run_onchange_register-realtek-nic-powersave-fix.ps1.tmpl): the
+     feature flag AND every byte of the PAM stanza / sudoers line / public key
+     are baked into this rendered script, so any change to any of them (flag
+     flip, key rotation, stanza edit) changes the rendered content hash and
+     re-fires run_onchange. That is not cosmetic — it is the ONLY re-fire
+     trigger chezmoi has, so nothing here may depend on runtime state chezmoi
+     can't see.
+
+     Self-installs the apt package inline (`dpkg -s || apt-get install`)
+     rather than relying on the packages.yaml resolve-deps pass to have
+     installed it first: the packages.yaml entry for libpam-ssh-agent-auth is
+     visibility/consistency ONLY, NOT load-bearing here. Reason: run_onchange
+     only re-fires on a rendered-CONTENT hash change, not on "a precondition
+     became newly true" — if this script's rendered text is unchanged but the
+     package only becomes available later, chezmoi would never re-run this
+     script to pick that up. Self-installing closes that gap, same as the
+     Windows precedent self-converging.
+
+     Runs interactively only: every chezmoi source root here is applied via an
+     interactive `chezmoi apply -S ...` (dfa / dotfiles-update-check.timer only
+     ever runs a read-only `apt-get -s upgrade` simulation, never `apply`,
+     never `sudo`) — so a TTY (and a human to approve an apt/sudo prompt) is
+     always present when this script's `sudo` calls run; no unattended-cron
+     hazard.
+
+     Safety property — `sufficient`, never `required`: the PAM line below
+     reads `auth sufficient pam_ssh_agent_auth.so ...`. If the agent is
+     unreachable, SSH_AUTH_SOCK didn't survive sudo's env_reset, the key
+     doesn't match, or the module is simply missing, PAM falls through to the
+     next stack entry (the normal password prompt) — sudo NEVER becomes
+     unusable because of this feature. This is the single most important
+     safety property of the whole design and must never be changed to
+     `required`.
+
+     Security caveats (fleet-wide — full detail in the plan doc §6):
+       - NOT passwordless sudo — a valid agent signature is still required.
+       - Agent-socket exposure: anything able to reach $SSH_AUTH_SOCK can
+         request a sudo-challenge signature. Recommend enabling 1Password's
+         "require confirmation for SSH agent requests" so each sudo needs an
+         explicit human tap.
+       - Fleet-wide trust: ONE public key in /etc/ssh/sudo_authorized_keys on
+         every linux+sudoSshAgentPam=true machine; the private half lives
+         centrally in 1Password. A vault compromise (or a live unlocked agent
+         on any one trusted machine) grants sudo fleet-wide — materially wider
+         blast radius than the already-accepted git-signing trust, hence the
+         dedicated key.
+       - WSL bridge: the agent socket is reachable via
+         socat -> npiperelay -> Windows openssh-ssh-agent pipe (1Password-
+         owned). Any process running as the same Windows user can reach it,
+         and would now gain root in the WSL guest, not just a git identity —
+         acknowledge, don't "fix" (same exposure already accepted for signing).
+
+     /etc/ssh/sudo_authorized_keys lives OUTSIDE $HOME deliberately (root:root
+     0644, delivered directly by this script) — a user-writable trust anchor
+     would let a compromised user session rewrite its own sudo trust. Never
+     symlink this into a $HOME-managed chezmoi target (Option C in the plan,
+     rejected for exactly this reason). */}}
+
+# feature flag baked as literal text so toggling it re-fires run_onchange:
+DESIRED={{ if .features.linux.sudoSshAgentPam }}true{{ else }}false{{ end }}
+
+{{- if eq .chezmoi.os "linux" }}
+{{- if .identities.personal }}
+{{- $sudoKey := "" }}
+{{- if hasKey .identities.personal "sudoKey" }}{{ $sudoKey = trimPrefix "key::" (index .identities.personal "sudoKey") }}{{ end }}
+# public key baked in verbatim via a quoted (zero-expansion) heredoc so any
+# rotation changes this file's rendered hash and re-fires run_onchange.
+SUDO_KEY="$(cat <<'_SUDO_KEY_EOF'
+{{ $sudoKey }}
+_SUDO_KEY_EOF
+)"
+
+PAM_LINE='auth sufficient pam_ssh_agent_auth.so file=/etc/ssh/sudo_authorized_keys'
+PAM_FILE=/etc/pam.d/sudo
+AUTHKEYS_FILE=/etc/ssh/sudo_authorized_keys
+SUDOERS_FILE=/etc/sudoers.d/00-ssh-auth-sock
+SUDOERS_LINE='Defaults env_keep += "SSH_AUTH_SOCK"'
+
+if [ "$DESIRED" = "true" ] && [ -z "$SUDO_KEY" ]; then
+  echo "sudo-ssh-agent-pam: sudoSshAgentPam enabled but identities.personal.sudoKey unset" >&2
+  exit 1
+fi
+
+if [ "$DESIRED" = "true" ]; then
+  # ---- converge: self-install the package, then write the three root files -
+  dpkg -s libpam-ssh-agent-auth >/dev/null 2>&1 || sudo apt-get install -y libpam-ssh-agent-auth
+
+  # authorized_keys: root:root 0644, NOT under $HOME (see header).
+  printf '%s\n' "$SUDO_KEY" | sudo tee "$AUTHKEYS_FILE" >/dev/null
+  sudo chown root:root "$AUTHKEYS_FILE"
+  sudo chmod 0644 "$AUTHKEYS_FILE"
+
+  # PAM: insert-if-absent as the FIRST auth line, before @include common-auth.
+  # Never duplicate on re-apply; never change `sufficient` to `required`.
+  if ! sudo grep -qF "$PAM_LINE" "$PAM_FILE"; then
+    sudo sed -i "1i ${PAM_LINE}" "$PAM_FILE"
+  fi
+
+  # sudoers: validate with visudo before installing — bad syntax must never
+  # reach a live sudoers.d file (that can lock sudo out entirely).
+  TMP_SUDOERS="$(mktemp)"
+  printf '%s\n' "$SUDOERS_LINE" > "$TMP_SUDOERS"
+  if ! sudo visudo -cf "$TMP_SUDOERS"; then
+    echo "sudo-ssh-agent-pam: generated sudoers snippet failed visudo -cf validation" >&2
+    rm -f "$TMP_SUDOERS"
+    exit 1
+  fi
+  sudo install -m 0440 -o root -g root "$TMP_SUDOERS" "$SUDOERS_FILE"
+  rm -f "$TMP_SUDOERS"
+
+  echo "sudo-ssh-agent-pam: converged (package installed, PAM stanza + sudoers env_keep + authorized_keys in place)."
+else
+  # ---- revert: idempotently remove the three artifacts if present ----------
+  if [ -f "$PAM_FILE" ] && sudo grep -qF "$PAM_LINE" "$PAM_FILE"; then
+    sudo sed -i "\#${PAM_LINE}#d" "$PAM_FILE"
+  fi
+  if [ -f "$SUDOERS_FILE" ]; then
+    sudo rm -f "$SUDOERS_FILE"
+  fi
+  if [ -f "$AUTHKEYS_FILE" ]; then
+    sudo rm -f "$AUTHKEYS_FILE"
+  fi
+  echo "sudo-ssh-agent-pam: feature disabled — reverted (PAM stanza, sudoers env_keep, authorized_keys removed if present)."
+fi
+{{- else }}
+echo "sudo-ssh-agent-pam: identities.personal not set (stranger fork) — nothing to do."
+{{- end }}
+{{- else }}
+echo "sudo-ssh-agent-pam: Linux-only feature ({{ .chezmoi.os }} detected) — nothing to do."
+{{- end }}
