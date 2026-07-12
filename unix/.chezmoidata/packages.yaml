@@ -18,7 +18,8 @@
       "yakuake": { gate: "!wsl", check: "dpkg" },
       "xclip": { gate: "!wsl", check: "dpkg" },
       "libssl-dev": { check: "dpkg" },
-      "pkg-config": { check: "dpkg" }
+      "pkg-config": { check: "dpkg" },
+      "libpam-ssh-agent-auth": { check: "dpkg" }
     },
     brew: {
       "jq": {},
