@@ -1,20 +1,20 @@
-{{/* windows/run_onchange_register-realtek-nic-powersave-fix.ps1.tmpl — apply-time
+{{/* windows/run_onchange_register-realtek-nic-powersave-fix.ps1.tmpl - apply-time
      registrar for the "keep Realtek NIC power-save disabled" self-heal.
 
      Problem it fixes: the Realtek 2.5GbE controller's power-saving features
      (Green Ethernet, Gigabit Lite, Power Saving Mode) negotiate badly with a dumb
-     unmanaged switch — the PHY parks between packets and the switch doesn't handle
+     unmanaged switch - the PHY parks between packets and the switch doesn't handle
      the low-power handshake, producing 60-150ms latency + 2-7% packet loss on the
      wired link (measured on the affected host: 83ms/2% loss to the gateway, cripples SSH /
      k9s / VPN; download halved by the loss). Disabling the three features fixes it
      instantly (0ms/0% loss). The catch: a Realtek DRIVER UPDATE re-enables them by
-     default, so the fix silently regresses after every driver reinstall — exactly
+     default, so the fix silently regresses after every driver reinstall - exactly
      how it first appeared.
 
      This registers a SYSTEM scheduled task that re-disables the three features
      whenever they could have been reset: at boot, and on UserPnp Event 20003
      (driver installation) so a driver swap self-heals without waiting for a reboot.
-     The action is idempotent — it only touches a property that is currently NOT
+     The action is idempotent - it only touches a property that is currently NOT
      'Disabled', and only bounces adapters it actually changed, so the common case
      (already disabled) is a no-op with zero link blip. It targets Realtek adapters
      by description, so it is harmless on machines/NICs without them (the query
