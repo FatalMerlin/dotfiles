@@ -1,0 +1,121 @@
+{{/* windows/run_onchange_register-startup-shortcuts.ps1.tmpl - apply-time
+     registrar for the two per-user Startup-folder autostarts: the AutoHotkey
+     v2 aggregate script (main.ahk) and the studio/headset mic-switcher loop.
+
+     Problem it fixes: main.ahk used to self-register its OWN Startup shortcut
+     via `FileCreateShortcut(A_ScriptFullPath, ...)` - a path baked in at
+     WHATEVER location the script happened to be run from at the time. It was
+     once run from an old archived checkout (D:\Projects\dotfiles), so the
+     shortcut it created pointed at that copy; once the archive was deleted
+     the shortcut went stale and Windows silently failed to autostart it - no
+     error, no autostart, nothing pointing anywhere useful (ARK-338 follow-up).
+
+     Fix: main.ahk's self-register line is removed - a deployed script has no
+     business writing shortcuts outside chezmoi's control - and THIS
+     run_onchange becomes the single declarative owner of both Startup
+     shortcuts, always pointed at the live chezmoi-managed copies under
+     $env:USERPROFILE. No elevation needed: the per-user Startup folder
+     ([Environment]::GetFolderPath('Startup')) is user-writable, unlike the
+     SYSTEM scheduled tasks the sibling registrars in this directory manage.
+
+     Gated by the SAME feature flags that already gate deployment of the
+     underlying files (see windows/.chezmoiignore): features.windows.autohotkey
+     and features.windows.micSwitcher. Reusing them - rather than inventing a
+     third flag - keeps "is the file deployed" and "does it autostart" in
+     lockstep: flip a feature off and both the file and its shortcut vanish on
+     the next apply.
+
+     Mechanics mirror the sibling registrars: the resolved flags are baked
+     into the rendered output below as literal $true/$false, so toggling a
+     feature changes this file's rendered content and re-fires run_onchange.
+     Converge is idempotent - each shortcut is fully recreated (overwrite, not
+     appended-to) on every run - and, as one-time+ongoing cleanup, any *.lnk
+     already in the Startup folder whose TargetPath or Arguments reference the
+     deleted D:\Projects\dotfiles archive is removed. That stale-path sweep is
+     what clears the dead shortcut(s) main.ahk (and a hand-made mic-switcher
+     shortcut) left behind, and stays as a defensive no-op afterwards. */}}
+$AhkDesired = {{ if .features.windows.autohotkey }}$true{{ else }}$false{{ end }}
+$MicDesired = {{ if .features.windows.micSwitcher }}$true{{ else }}$false{{ end }}
+
+$StartupDir = [Environment]::GetFolderPath('Startup')
+$WshShell = New-Object -ComObject WScript.Shell
+$rc = 0
+
+# Resolve an executable: prefer whatever's on PATH, fall back to a known
+# install location. Errors (exit 1) rather than silently skipping if neither
+# resolves - a shortcut to nothing is worse than a loud apply-time failure.
+function Resolve-Exe {
+    param([string]$Name, [string]$FallbackPath)
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    if (Test-Path -LiteralPath $FallbackPath) { return $FallbackPath }
+    return $null
+}
+
+# Create/overwrite a Startup shortcut in one shot via the WScript.Shell COM
+# CreateShortcut/Save pattern - re-running always converges to these exact
+# properties, so no dupes and no drift from a previous, differently-configured
+# shortcut at the same path.
+function Set-StartupShortcut {
+    param(
+        [Parameter(Mandatory)] [string]$LnkPath,
+        [Parameter(Mandatory)] [string]$TargetPath,
+        [string]$Arguments = '',
+        [string]$WorkingDirectory = ''
+    )
+    $sc = $WshShell.CreateShortcut($LnkPath)
+    $sc.TargetPath = $TargetPath
+    $sc.Arguments = $Arguments
+    $sc.WorkingDirectory = $WorkingDirectory
+    $sc.Save()
+}
+
+# --- stale cleanup: remove any Startup shortcut referencing the deleted archive ---
+Get-ChildItem -LiteralPath $StartupDir -Filter '*.lnk' -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+        $sc = $WshShell.CreateShortcut($_.FullName)
+        if ($sc.TargetPath -like '*D:\Projects\dotfiles*' -or $sc.Arguments -like '*D:\Projects\dotfiles*') {
+            Remove-Item -LiteralPath $_.FullName -Force
+            Write-Host "register-startup-shortcuts: removed stale '$($_.Name)' (referenced deleted D:\Projects\dotfiles archive)."
+        }
+    } catch {
+        Write-Warning "register-startup-shortcuts: could not inspect '$($_.FullName)' - $($_.Exception.Message)"
+    }
+}
+
+# --- main.ahk (AutoHotkey v2 aggregate: umlaut/vpn/thinlinc/yt_music loop) --------
+$ahkLnk = Join-Path $StartupDir 'main.ahk.lnk'
+if ($AhkDesired) {
+    $ahk = Join-Path $env:USERPROFILE 'autohotkey\main.ahk'
+    $ahkExe = Resolve-Exe -Name 'AutoHotkey64.exe' -FallbackPath 'C:\Users\FatalMerlin\AppData\Local\Programs\AutoHotkey\v2\AutoHotkey64.exe'
+    if (-not $ahkExe) {
+        Write-Error "register-startup-shortcuts: AutoHotkey64.exe not found (PATH or known install path) - cannot register main.ahk autostart."
+        $rc = 1
+    } else {
+        Set-StartupShortcut -LnkPath $ahkLnk -TargetPath $ahkExe -Arguments "`"$ahk`"" -WorkingDirectory (Join-Path $env:USERPROFILE 'autohotkey')
+        Write-Host "register-startup-shortcuts: registered '$ahkLnk' -> $ahkExe `"$ahk`""
+    }
+} elseif (Test-Path -LiteralPath $ahkLnk) {
+    Remove-Item -LiteralPath $ahkLnk -Force
+    Write-Host "register-startup-shortcuts: features.windows.autohotkey disabled - removed '$ahkLnk'."
+}
+
+# --- mic-switcher.ps1 (long-running poll loop - launch hidden, no console) -------
+$micLnk = Join-Path $StartupDir 'mic-switcher.lnk'
+if ($MicDesired) {
+    $mic = Join-Path $env:USERPROFILE 'mic-switcher.ps1'
+    $pwshExe = Resolve-Exe -Name 'pwsh.exe' -FallbackPath 'C:\Program Files\PowerShell\7\pwsh.exe'
+    if (-not $pwshExe) {
+        Write-Error "register-startup-shortcuts: pwsh.exe not found (PATH or known install path) - cannot register mic-switcher autostart."
+        $rc = 1
+    } else {
+        $micArgs = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$mic`""
+        Set-StartupShortcut -LnkPath $micLnk -TargetPath $pwshExe -Arguments $micArgs -WorkingDirectory $env:USERPROFILE
+        Write-Host "register-startup-shortcuts: registered '$micLnk' -> $pwshExe $micArgs"
+    }
+} elseif (Test-Path -LiteralPath $micLnk) {
+    Remove-Item -LiteralPath $micLnk -Force
+    Write-Host "register-startup-shortcuts: features.windows.micSwitcher disabled - removed '$micLnk'."
+}
+
+exit $rc

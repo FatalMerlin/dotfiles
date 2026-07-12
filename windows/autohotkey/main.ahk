@@ -8,8 +8,6 @@
     TrayTip("Reloaded", A_ScriptName)
 }
 
-FileCreateShortcut(A_ScriptFullPath, A_Startup '\' A_ScriptName '.lnk') ; Create a shortcut in the startup folder
-
 #Include ./vpn.ahk
 #Include ./thinlinc.ahk
 #Include ./yt_music.ahk
