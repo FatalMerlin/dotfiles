@@ -1,0 +1,119 @@
+{{/* windows/run_onchange_register-realtek-nic-powersave-fix.ps1.tmpl — apply-time
+     registrar for the "keep Realtek NIC power-save disabled" self-heal.
+
+     Problem it fixes: the Realtek 2.5GbE controller's power-saving features
+     (Green Ethernet, Gigabit Lite, Power Saving Mode) negotiate badly with a dumb
+     unmanaged switch — the PHY parks between packets and the switch doesn't handle
+     the low-power handshake, producing 60-150ms latency + 2-7% packet loss on the
+     wired link (measured on the affected host: 83ms/2% loss to the gateway, cripples SSH /
+     k9s / VPN; download halved by the loss). Disabling the three features fixes it
+     instantly (0ms/0% loss). The catch: a Realtek DRIVER UPDATE re-enables them by
+     default, so the fix silently regresses after every driver reinstall — exactly
+     how it first appeared.
+
+     This registers a SYSTEM scheduled task that re-disables the three features
+     whenever they could have been reset: at boot, and on UserPnp Event 20003
+     (driver installation) so a driver swap self-heals without waiting for a reboot.
+     The action is idempotent — it only touches a property that is currently NOT
+     'Disabled', and only bounces adapters it actually changed, so the common case
+     (already disabled) is a no-op with zero link blip. It targets Realtek adapters
+     by description, so it is harmless on machines/NICs without them (the query
+     returns nothing -> nothing to do).
+
+     Mechanics mirror the winnat-reset registrar: the whole task XML + feature flag
+     are baked into the rendered output, so any change re-fires run_onchange.
+     Registering a SYSTEM task needs admin, so the script self-elevates once (UAC)
+     only when the rendered content actually changed. On UAC decline/failure it
+     exits non-zero so chezmoi retries next apply. The feature flag drives both
+     directions: default-on registers + applies now; flip it off in the private
+     data overlay and the next apply unregisters the task. */}}
+# feature flag baked as text so toggling it re-fires run_onchange:
+$Desired  = {{ if .features.windows.realtekNicPowerSaveFix }}$true{{ else }}$false{{ end }}
+$TaskName = 'Realtek-NIC-Disable-PowerSave'
+
+# Task definition. The action guards on Realtek adapters existing, so registering
+# on a machine without one is harmless (nothing matches -> no-op). Triggers: boot
+# (covers a reboot after a driver update) + UserPnp 20003 driver-install event
+# (covers a no-reboot driver swap). Idempotent action => firing often is cheap.
+$Xml = @'
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Keeps the Realtek NIC's power-saving features (Green Ethernet, Gigabit Lite, Power Saving Mode) disabled. They negotiate badly with a dumb unmanaged switch and cause 60-150ms latency + packet loss on the wired link; a Realtek driver update re-enables them by default, silently regressing the fix. Runs at boot and on UserPnp Event 20003 (driver install). Idempotent: only changes a property that is not already Disabled, and only bounces adapters it actually changed, so the already-fixed case is a no-op with no link blip.</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <BootTrigger>
+      <Enabled>true</Enabled>
+    </BootTrigger>
+    <EventTrigger>
+      <Enabled>true</Enabled>
+      <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="System"&gt;&lt;Select Path="System"&gt;*[System[Provider[@Name='Microsoft-Windows-UserPnp'] and (EventID=20003)]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
+    </EventTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>S-1-5-18</UserId>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT2M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NonInteractive -NoProfile -WindowStyle Hidden -Command "$ns='Green Ethernet','Gigabit Lite','Power Saving Mode';$c=@{};foreach($n in $ns){foreach($p in (Get-NetAdapterAdvancedProperty -InterfaceDescription 'Realtek*' -DisplayName $n -ErrorAction SilentlyContinue)){if($p.DisplayValue -ne 'Disabled'){Set-NetAdapterAdvancedProperty -Name $p.Name -DisplayName $n -DisplayValue 'Disabled' -NoRestart -ErrorAction SilentlyContinue;$c[$p.Name]=1}}};foreach($a in $c.Keys){Restart-NetAdapter -Name $a -ErrorAction SilentlyContinue}"</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+'@
+
+# --- elevation guard: registering/unregistering a SYSTEM task requires admin -----
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
+if (-not $isAdmin) {
+    # Re-run THIS rendered script elevated with the same interpreter chezmoi used;
+    # mirror the child's exit code so a decline/failure leaves run_onchange
+    # un-recorded and chezmoi retries next apply.
+    $interp = (Get-Process -Id $PID).Path
+    $self   = $PSCommandPath
+    try {
+        $p = Start-Process -FilePath $interp -Verb RunAs -Wait -PassThru `
+             -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File', $self)
+        exit $p.ExitCode
+    } catch {
+        Write-Error "realtek-nic-powersave: elevation declined or failed - $($_.Exception.Message). Re-run 'chezmoi apply' and approve the UAC prompt."
+        exit 1
+    }
+}
+
+# --- elevated body: converge the task, then apply once now so it takes effect
+#     immediately instead of waiting for the next boot/driver-install event -------
+try {
+    $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($Desired) {
+        Register-ScheduledTask -TaskName $TaskName -Xml $Xml -Force | Out-Null
+        Start-ScheduledTask   -TaskName $TaskName -ErrorAction SilentlyContinue  # apply now
+        Write-Host "realtek-nic-powersave: registered '$TaskName' (boot + UserPnp 20003) and ran it once."
+    } elseif ($existing) {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+        Write-Host "realtek-nic-powersave: feature disabled - unregistered '$TaskName'."
+    } else {
+        Write-Host "realtek-nic-powersave: feature disabled and task absent - nothing to do."
+    }
+    exit 0
+} catch {
+    Write-Error "realtek-nic-powersave: converge failed - $($_.Exception.Message)"
+    exit 1
+}

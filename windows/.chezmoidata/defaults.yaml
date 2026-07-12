@@ -1,5 +1,5 @@
 {
-  features: { windows: { autohotkey: true, micSwitcher: true } },
+  features: { windows: { autohotkey: true, micSwitcher: true, winnatPortResetTask: true, realtekNicPowerSaveFix: true } },
   windows: {
     thinlinc: { host: "", user: "" },
     onepassword: { account: "", vpnItem: "" },
