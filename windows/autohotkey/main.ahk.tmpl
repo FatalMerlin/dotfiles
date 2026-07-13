@@ -8,13 +8,21 @@
     TrayTip("Reloaded", A_ScriptName)
 }
 
-{{ if .features.windows.vpn.ahk }}#Include ./vpn.ahk
-{{ end }}{{ if .features.windows.thinlinc.ahk }}#Include ./thinlinc.ahk
-{{ end }}{{ if .features.windows.autohotkey.ytMusic }}#Include ./yt_music.ahk
-{{ end }}{{ if .features.windows.autohotkey.umlaut }}#Include ./umlaut.ahk
+{{ if .features.windows.vpn.ahk -}}
+#Include ./vpn.ahk
+{{ end -}}
+{{ if .features.windows.thinlinc.ahk -}}
+#Include ./thinlinc.ahk
+{{ end -}}
+{{ if .features.windows.autohotkey.ytMusic -}}
+#Include ./yt_music.ahk
+{{ end -}}
+{{ if .features.windows.autohotkey.umlaut -}}
+#Include ./umlaut.ahk
 {{ end }}
 loop {
     Sleep(1000)
 {{ if .features.windows.vpn.ahk }}    VPNLoop()
-{{ end }}{{ if .features.windows.thinlinc.ahk }}    ThinLincLoop()
-{{ end }}}
+{{ end -}}
+{{ if .features.windows.thinlinc.ahk }}    ThinLincLoop()
+{{ end -}}}
