@@ -1,8 +1,31 @@
+# windows/.chezmoidata/defaults.yaml — Windows feature flags + config.
+#
+# Each feature owns its config in one block: its enable toggle(s) plus any
+# settings it needs. A feature consumed by more than one mechanism carries a
+# toggle per mechanism (e.g. thinlinc.ahk vs thinlinc.powershell). Credential
+# lookups are named per-feature (each feature points at its own 1Password item)
+# rather than shared, so nothing is forced onto one secret. All values here are
+# defaults; the private overlay's [data] overrides them per host.
 {
-  features: { windows: { autohotkey: true, micSwitcher: true, winnatPortResetTask: true, realtekNicPowerSaveFix: true } },
-  windows: {
-    thinlinc: { host: "", user: "" },
-    onepassword: { account: "", vpnItem: "" },
-    vpn: { connectTitle: "", credentialTitle: "" }
+  features: {
+    windows: {
+      # AutoHotkey aggregate (main.ahk): master switch + the AHK-only modules.
+      autohotkey: { enabled: false, umlaut: false, ytMusic: false },
+      # ThinLinc autoconnect — used by the AHK loop and the `tl` shell function.
+      thinlinc: {
+        ahk: false, powershell: false, host: "", user: "",
+        onepassword: { account: "", item: "" }
+      },
+      # OpenVPN credential autofill (AHK only).
+      vpn: {
+        ahk: false, connectTitle: "", credentialTitle: "",
+        onepassword: { account: "", item: "" }
+      },
+      # Studio/headset mic auto-switcher.
+      micSwitcher: { enabled: false, studioMic: "", headsetMic: "", pollInterval: 500, ttsVolume: 50 },
+      # SYSTEM scheduled-task self-heals (no config).
+      winnatPortResetTask: true,
+      realtekNicPowerSaveFix: true
+    }
   }
 }

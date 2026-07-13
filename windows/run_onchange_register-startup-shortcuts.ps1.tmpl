@@ -34,8 +34,8 @@
      deleted D:\Projects\dotfiles archive is removed. That stale-path sweep is
      what clears the dead shortcut(s) main.ahk (and a hand-made mic-switcher
      shortcut) left behind, and stays as a defensive no-op afterwards. */}}
-$AhkDesired = {{ if .features.windows.autohotkey }}$true{{ else }}$false{{ end }}
-$MicDesired = {{ if .features.windows.micSwitcher }}$true{{ else }}$false{{ end }}
+$AhkDesired = {{ if .features.windows.autohotkey.enabled }}$true{{ else }}$false{{ end }}
+$MicDesired = {{ if .features.windows.micSwitcher.enabled }}$true{{ else }}$false{{ end }}
 
 $StartupDir = [Environment]::GetFolderPath('Startup')
 $WshShell = New-Object -ComObject WScript.Shell

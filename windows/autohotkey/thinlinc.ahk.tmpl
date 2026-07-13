@@ -6,7 +6,7 @@
 thinlincWindowFilter := "ThinLinc client ahk_exe tlclient.exe ahk_class thinlinc-client"
 
 ThinLincAutoConnect() {
-    opResult := GetOpSecret("{{ .windows.onepassword.account }}", "{{ .windows.onepassword.vpnItem }}", "password")
+    opResult := GetOpSecret("{{ .features.windows.thinlinc.onepassword.account }}", "{{ .features.windows.thinlinc.onepassword.item }}", "password")
 
     if (opResult.Length != 1) {
         return

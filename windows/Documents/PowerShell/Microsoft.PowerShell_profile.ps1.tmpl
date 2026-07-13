@@ -322,9 +322,11 @@ function rmrf {
     Remove-Item -Recurse -Force $args
 }
 
+{{ if .features.windows.thinlinc.powershell }}
 function tl {
-    & "C:\Program Files\ThinLinc client\tlclient.exe" --user {{ .windows.thinlinc.user }} --password $(op item get {{ .windows.onepassword.vpnItem }} --account "{{ .windows.onepassword.account }}" --fields password --reveal) {{ .windows.thinlinc.host }} 
+    & "C:\Program Files\ThinLinc client\tlclient.exe" --user {{ .features.windows.thinlinc.user }} --password $(op item get {{ .features.windows.thinlinc.onepassword.item }} --account "{{ .features.windows.thinlinc.onepassword.account }}" --fields password --reveal) {{ .features.windows.thinlinc.host }}
 }
+{{ end }}
 
 function mkcd {
     param (

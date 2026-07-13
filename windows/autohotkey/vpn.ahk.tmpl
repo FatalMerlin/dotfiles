@@ -4,8 +4,8 @@
 #Include ./utils.ahk
 
 vpnBaseWindowFilter := 'ahk_exe openvpn-gui.exe ahk_class #32770'
-vpnConnectWindowTitle := '{{ .windows.vpn.connectTitle }}'
-vpnCredentialWindowTitle := '{{ .windows.vpn.credentialTitle }}'
+vpnConnectWindowTitle := '{{ .features.windows.vpn.connectTitle }}'
+vpnCredentialWindowTitle := '{{ .features.windows.vpn.credentialTitle }}'
 vpnConnectWindowFilter := vpnConnectWindowTitle " " vpnBaseWindowFilter
 vpnCredentialWindowFilter := vpnCredentialWindowTitle " " vpnBaseWindowFilter
 
@@ -14,7 +14,7 @@ AuthAndConnect() {
 
     ControlSetText("Autofilling...", "Edit1", vpnCredentialWindowFilter)
 
-    opResult := GetOpSecret("{{ .windows.onepassword.account }}", "{{ .windows.onepassword.vpnItem }}", "username,password,one-time password")
+    opResult := GetOpSecret("{{ .features.windows.vpn.onepassword.account }}", "{{ .features.windows.vpn.onepassword.item }}", "username,password,one-time password")
 
     username := opResult[1]
     passWithOtp := opResult[2] opResult[3]

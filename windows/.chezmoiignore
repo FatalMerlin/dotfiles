@@ -1,7 +1,19 @@
-{{ if not .features.windows.autohotkey }}
+{{ if not .features.windows.autohotkey.enabled }}
 autohotkey/**
 {{ end }}
-{{ if not .features.windows.micSwitcher }}
+{{ if not .features.windows.vpn.ahk }}
+autohotkey/vpn.ahk
+{{ end }}
+{{ if not .features.windows.thinlinc.ahk }}
+autohotkey/thinlinc.ahk
+{{ end }}
+{{ if not .features.windows.autohotkey.ytMusic }}
+autohotkey/yt_music.ahk
+{{ end }}
+{{ if not .features.windows.autohotkey.umlaut }}
+autohotkey/umlaut.ahk
+{{ end }}
+{{ if not .features.windows.micSwitcher.enabled }}
 mic-switcher.ps1
 {{ end }}
 

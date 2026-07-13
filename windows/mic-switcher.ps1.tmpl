@@ -1,11 +1,11 @@
 # mic-switcher.ps1
 #Requires -Modules AudioDeviceCmdlets
 
-# --- Config ---
-$studioMicName = "FOX"        # Partial name match, adjust to your device
-$headsetMicName = "LIGHTSPEED"          # Partial name match
-$pollInterval = 500                # ms between polls
-$ttsVolume = 50
+# --- Config (parameterized from chezmoi: features.windows.micSwitcher) ---
+$studioMicName = "{{ .features.windows.micSwitcher.studioMic }}"   # partial name match
+$headsetMicName = "{{ .features.windows.micSwitcher.headsetMic }}" # partial name match
+$pollInterval = {{ .features.windows.micSwitcher.pollInterval }}   # ms between polls
+$ttsVolume = {{ .features.windows.micSwitcher.ttsVolume }}
 
 # --- Helpers ---
 function Get-DeviceByPartialName($partialName) {
