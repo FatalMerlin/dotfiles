@@ -22,7 +22,10 @@
 {{ end }}
 loop {
     Sleep(1000)
-{{ if .features.windows.vpn.ahk }}    VPNLoop()
-{{ end -}}
-{{ if .features.windows.thinlinc.ahk }}    ThinLincLoop()
-{{ end -}}}
+{{- if .features.windows.vpn.ahk }}
+    VPNLoop()
+{{- end }}
+{{- if .features.windows.thinlinc.ahk }}
+    ThinLincLoop()
+{{- end }}
+}
