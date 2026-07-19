@@ -19,7 +19,9 @@ $env:UV_CACHE_DIR = "D:/.cache/uv"
 # Ensure PSGallery is registered as a trusted repository
 # And force re-registration to avoid issues with existing registration
 # This also ensures the latest repository metadata is used
-Register-PSResourceRepository -PSGallery -Trusted -Force
+if (-not (Get-PSResourceRepository -Name PSGallery -ErrorAction SilentlyContinue)) {
+    Register-PSResourceRepository -PSGallery -Trusted -Force
+}
 
 function EnsureExperimentalFeature {
     param (
