@@ -52,6 +52,7 @@ $DOTFILES_SRC = "$HOME\.local\share\chezmoi"
 $DOTFILES_PRIV_SRC = "$HOME\.local\share\dotfiles-private"
 function dfa { chezmoi apply -S "$DOTFILES_SRC\shared"; chezmoi apply -S "$DOTFILES_SRC\windows"; chezmoi apply -S "$DOTFILES_PRIV_SRC\personal" }   # dotfiles apply
 function dfu { git -C "$DOTFILES_SRC" pull --ff-only; dfa }                                          # dotfiles update
+function dotfiles { Set-Location $DOTFILES_SRC }                                                    # dotfiles — cd to the chezmoi source root
 
 #region Autocompletes
 # winget autocomplete
