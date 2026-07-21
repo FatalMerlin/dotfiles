@@ -100,6 +100,10 @@ function New-CommandAlias {
 # Ctrl+d to delete char or exit, Ctrl+a to go to beginning of line, Ctrl+e to go to end of line, etc.
 # Mirrors the default behavior of many Unix shells
 Set-PSReadLineOption -EditMode Emacs
+# Enable Ctrl+LeftArrow and Ctrl+RightArrow to move by word (instead of by character)
+# because `-EditMode Emacs` disables it by default.
+Set-PSReadLineKeyHandler -Chord Ctrl+LeftArrow BackwardWord
+Set-PSReadLineKeyHandler -Chord Ctrl+RightArrow ForwardWord
 
 # (c)ode (c)onfig
 function cc { code $PROFILE }
@@ -323,11 +327,11 @@ function rmrf {
     Remove-Item -Recurse -Force $args
 }
 
-{{ if .features.windows.thinlinc.powershell }}
+{ { if .features.windows.thinlinc.powershell } }
 function tl {
-    & "C:\Program Files\ThinLinc client\tlclient.exe" --user {{ .features.windows.thinlinc.user }} --password $(op item get {{ .features.windows.thinlinc.onepassword.item }} --account "{{ .features.windows.thinlinc.onepassword.account }}" --fields password --reveal) {{ .features.windows.thinlinc.host }}
+    & "C:\Program Files\ThinLinc client\tlclient.exe" --user { { .features.windows.thinlinc.user } } --password $(op item get { { .features.windows.thinlinc.onepassword.item } } --account "{{ .features.windows.thinlinc.onepassword.account }}" --fields password --reveal) { { .features.windows.thinlinc.host } }
 }
-{{ end }}
+{ { end } }
 
 function mkcd {
     param (
