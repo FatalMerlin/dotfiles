@@ -51,6 +51,18 @@
     SendInput("ß")
 }
 
+; RAlt W -> š
+>!w::
+{
+    SendInput("š")
+}
+
+; RAlt W -> Š
++>!w::
+{
+    SendInput("Š")
+}
+
 ; RAlt 5 -> Euro
 >!5::
 {
