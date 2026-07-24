@@ -69,7 +69,14 @@
     SendInput("€")
 }
 
+; RAlt 0 -> Degree Symbol
 >!0::
 {
     SendInput("°")
+}
+
+; RAlt = -> Plus-Minus Symbol
+>!=::
+{
+    SendInput("±")
 }
