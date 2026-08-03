@@ -43,7 +43,7 @@ if ifalias brew brew custom '/bin/bash -c \
         touch "$jira_config_file"
       fi
 
-      alias jira="OP_ACCOUNT={{ .linux.work.opAccount }} opx jiratui ui --jql-expression-id 1" # bug in the tool, config setting for this is ignored
-      alias jiratui="OP_ACCOUNT={{ .linux.work.opAccount }} opx jiratui"
+      alias jiratui="OP_ACCOUNT={{ .linux.work.opAccount }} opx jiratui ui --jql-expression-id 1" # bug in the tool, config setting for this is ignored
+      # alias jiratui="OP_ACCOUNT={{ .linux.work.opAccount }} opx jiratui"
     fi
 fi
