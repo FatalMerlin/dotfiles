@@ -25,6 +25,7 @@
         },
       brew:
         {
+          "alloy": { source: "grafana-alloy" },
           "argocd": {},
           "bun": { source: "oven-sh/bun/bun" },
           "cmake": {},
