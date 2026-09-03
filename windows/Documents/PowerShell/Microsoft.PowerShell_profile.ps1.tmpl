@@ -480,3 +480,43 @@ function which {
     $cmd = Get-Command $command -ErrorAction SilentlyContinue
     return $cmd.Definition
 }
+
+function Get-ClipboardOwner {
+    # Define the Windows API functions needed to read the clipboard window handle
+$MethodDefinition = @'
+[DllImport("user32.dll", SetLastError = true)]
+public static extern IntPtr GetOpenClipboardWindow();
+
+[DllImport("user32.dll", SetLastError = true)]
+public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+'@
+
+# Load the API methods into PowerShell
+$User32 = Add-Type -MemberDefinition $MethodDefinition -Name "User32Clipboard" -Namespace "Win32" -PassThru
+
+# Get the handle of the window locking the clipboard
+$hWnd = $User32::GetOpenClipboardWindow()
+
+if ($hWnd -eq [IntPtr]::Zero) {
+    Write-Host "The clipboard is not currently locked by any application." -ForegroundColor Green
+} else {
+    $processId = 0
+    # Extract the Process ID (PID) from the window handle
+    $User32::GetWindowThreadProcessId($hWnd, [ref]$processId) | Out-Null
+    
+    # Retrieve process details using the extracted PID
+    $lockingProcess = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    
+    if ($lockingProcess) {
+        Write-Host "Clipboard is LOCKED by:" -ForegroundColor Red
+        [PSCustomObject]@{
+            "Process Name" = $lockingProcess.Name
+            "PID"          = $processId
+            "Window Title" = $lockingProcess.MainWindowTitle
+            "Executable"   = $lockingProcess.Path
+        } | Format-List
+    } else {
+        Write-Host "The clipboard is locked, but the process (PID: $processId) could not be identified (it may have just closed)." -ForegroundColor Yellow
+    }
+}
+}
