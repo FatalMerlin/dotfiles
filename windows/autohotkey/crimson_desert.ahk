@@ -6,13 +6,27 @@
 ;; Why: the game auto-follows an NPC (on foot or horseback) only while the run
 ;; key is physically held, and ships no toggle for it. Long ride-along and
 ;; walk-along quest sequences - cutscenes in all but name - therefore need Shift
-;; held down for minutes at a time. F8 latches it so those sequences play out
-;; unattended, including while tabbed out to another window.
+;; held down for minutes at a time. F8 latches it so they play out hands-free.
 ;;
-;; The known community workaround is to hold Shift and then open the Steam
-;; overlay (Shift+Tab), which swallows the key-up so the game keeps running.
-;; That is evidence the game does not reset its input state when focus shifts;
-;; this script reproduces the same latch without occupying the screen.
+;; SCOPE - the game must stay focused. Tabbing out stops the character, and
+;; that is not fixable from here. Two mechanisms were tried and measured:
+;;
+;;   1. A latched Send (below). Works, but Windows routes keyboard input only
+;;      to the focused window, so it stops the moment focus moves elsewhere.
+;;   2. Re-posting the key down with ControlSend each tick while unfocused.
+;;      ControlSend delivers via PostMessage, and this game ignores posted
+;;      keyboard messages entirely - measured in-game, the character stopped
+;;      while the re-assert was firing once a second with no error. Removed.
+;;      Do not reintroduce it; it does nothing here.
+;;
+;; The community Steam-overlay trick (hold Shift, then Shift+Tab) is not a
+;; counter-example: the overlay is an in-process hook that leaves the game
+;; focused, which is exactly why the held key survives it.
+;;
+;; Reaching a genuinely unfocused game would need input that bypasses window
+;; focus altogether - i.e. a virtual XInput pad via ViGEmBus - and is only
+;; worth the driver install if a real controller's held button is observed to
+;; survive alt-tab first.
 
 CRIMSON_DESERT_WINDOW_FILTER := "ahk_exe CrimsonDesert.exe"
 
@@ -23,10 +37,8 @@ crimsonDesertRiding := false
 /**
  * Latches or releases the run key.
  *
- * Uses Send (SendInput) rather than ControlSend: ControlSend posts window
- * messages via PostMessage, which DirectInput/Raw Input titles typically
- * ignore, whereas SendInput goes through the driver-level input path the game
- * actually reads.
+ * Send (SendInput) goes through the driver-level input path the game reads.
+ * See the ControlSend note in the file header before reaching for that instead.
  *
  * @param riding {Boolean} true to hold the run key down, false to release it.
  */
@@ -38,7 +50,7 @@ CrimsonDesertSetRiding(riding) {
 }
 
 /**
- * Releases a latched run key on script exit.
+ * Releases a latched run key.
  *
  * SendInput mutates the real OS keyboard state, so a latched Shift outlives the
  * script being reloaded (Ctrl+Alt+R) or killed - leaving Shift stuck down
@@ -53,38 +65,19 @@ CrimsonDesertRelease(*) {
 OnExit(CrimsonDesertRelease)
 
 /**
- * Per-tick upkeep, called from the central loop in main.ahk.
- *
- * Covers the case the Steam-overlay evidence does not: the overlay is an
- * in-process hook and leaves the game focused, whereas a real alt-tab delivers
- * WM_KILLFOCUS and *may* make the game drop the held key. Re-posting the key
- * down directly to the window each tick re-asserts the latch if so, and is a
- * harmless repeat if not.
- *
- * Also fails safe: if the game exits while latched, drop the latch rather than
- * leave Shift held.
+ * Fail-safe, called once per tick by the central loop in main.ahk: if the game
+ * exits while the latch is engaged, drop the latch instead of leaving Shift
+ * held down across the whole desktop.
  */
 CrimsonDesertLoop() {
-    if (!crimsonDesertRiding) {
-        return
-    }
-
-    if (!WinExist(CRIMSON_DESERT_WINDOW_FILTER)) {
+    if (crimsonDesertRiding && !WinExist(CRIMSON_DESERT_WINDOW_FILTER)) {
         CrimsonDesertRelease()
-        return
     }
-
-    ; Focused: the SendInput latch is already in effect, nothing to do.
-    if (WinActive(CRIMSON_DESERT_WINDOW_FILTER)) {
-        return
-    }
-
-    ControlSend("{Shift down}", , CRIMSON_DESERT_WINDOW_FILTER)
 }
 
 ; Claim F8 only while the game is running, so the key stays free otherwise.
-; WinExist rather than WinActive on purpose: the latch must stay releasable
-; after tabbing away from the game, which is the entire point of the feature.
+; WinExist rather than WinActive on purpose: alt-tabbing stops the ride but does
+; NOT clear the latch, so F8 has to stay live outside the game to release it.
 #HotIf WinExist(CRIMSON_DESERT_WINDOW_FILTER)
 
 ; F8 - toggle hands-free auto-follow.
