@@ -23,10 +23,16 @@
 ;; counter-example: the overlay is an in-process hook that leaves the game
 ;; focused, which is exactly why the held key survives it.
 ;;
-;; Reaching a genuinely unfocused game would need input that bypasses window
-;; focus altogether - i.e. a virtual XInput pad via ViGEmBus - and is only
-;; worth the driver install if a real controller's held button is observed to
-;; survive alt-tab first.
+;; Reaching a genuinely unfocused game turns out to be impossible from outside
+;; the process. Measured with a real controller: a held run button does not
+;; survive alt-tab either, while the world does keep simulating - so the game
+;; gates every input path on window focus, XInput included. A virtual XInput
+;; pad (ViGEmBus) would take that same gated path, so the driver install was
+;; ruled out on that measurement rather than attempted. Question closed.
+;;
+;; If you want the screen back while a sequence plays out: put any always-on-top
+;; window over the game and do not click into it. The game keeps focus, so the
+;; latch keeps running - the same reason the Steam overlay trick works.
 
 CRIMSON_DESERT_WINDOW_FILTER := "ahk_exe CrimsonDesert.exe"
 
