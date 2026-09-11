@@ -19,6 +19,9 @@
 {{ end -}}
 {{ if .features.windows.autohotkey.umlaut -}}
 #Include ./umlaut.ahk
+{{ end -}}
+{{ if .features.windows.autohotkey.crimsonDesert -}}
+#Include ./crimson_desert.ahk
 {{ end }}
 loop {
     Sleep(1000)
@@ -27,5 +30,8 @@ loop {
 {{- end }}
 {{- if .features.windows.thinlinc.ahk }}
     ThinLincLoop()
+{{- end }}
+{{- if .features.windows.autohotkey.crimsonDesert }}
+    CrimsonDesertLoop()
 {{- end }}
 }

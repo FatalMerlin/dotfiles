@@ -10,7 +10,7 @@
   features: {
     windows: {
       # AutoHotkey aggregate (main.ahk): master switch + the AHK-only modules.
-      autohotkey: { enabled: false, umlaut: false, ytMusic: false },
+      autohotkey: { enabled: false, umlaut: false, ytMusic: false, crimsonDesert: false },
       # ThinLinc autoconnect — used by the AHK loop and the `tl` shell function.
       thinlinc: {
         ahk: false, powershell: false, host: "", user: "",

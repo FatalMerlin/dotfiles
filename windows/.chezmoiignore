@@ -13,6 +13,9 @@ autohotkey/yt_music.ahk
 {{ if not .features.windows.autohotkey.umlaut }}
 autohotkey/umlaut.ahk
 {{ end }}
+{{ if not .features.windows.autohotkey.crimsonDesert }}
+autohotkey/crimson_desert.ahk
+{{ end }}
 {{ if not .features.windows.micSwitcher.enabled }}
 mic-switcher.ps1
 {{ end }}
