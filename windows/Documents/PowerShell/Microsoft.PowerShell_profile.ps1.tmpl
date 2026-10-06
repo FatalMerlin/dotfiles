@@ -522,3 +522,21 @@ public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwPro
         }
     }
 }
+
+# Customize the PowerShell prompt to include the current working directory and send OSC 9;9 escape sequences for terminal integration.
+$__oldPromptScriptBlock = $function:prompt
+$function:prompt = {
+    $loc = Get-Location
+
+    # Call the original prompt function to get the default prompt string
+    if ($null -ne $__oldPromptScriptBlock) {
+        $prompt = & $__oldPromptScriptBlock
+    }
+
+    $prompt += "$([char]27)]9;12$([char]7)"
+    if ($loc.Provider.Name -eq "FileSystem") {
+        $prompt += "$([char]27)]9;9;`"$($loc.ProviderPath)`"$([char]27)\"
+    }
+
+    $prompt
+}
