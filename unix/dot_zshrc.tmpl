@@ -443,5 +443,9 @@ chmod +x "$PLASMA_ENV_SCRIPT"
 [ -f "$HOME/.acme.sh/acme.sh.env" ] && source "$HOME/.acme.sh/acme.sh.env"
 debug_measure_end
 
+if [ "$(IS_WSL:-0)" = "1" ]; then
+  PROMPT_COMMAND=${PROMPT_COMMAND:+"$PROMPT_COMMAND ; "}'printf "\e]9;9;%s\e\\" "$(wslpath -w "$PWD")"'
+fi
+
 # Reminder: the dev/edit aliases were rewired to chezmoi during the migration.
 echo "↻ chezmoi-native aliases: cz/cza/czf/csc = edit source (auto-apply) · dotfiles = chezmoi cd"
